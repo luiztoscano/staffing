@@ -785,6 +785,59 @@
     }
   }
 
+  async function savePositions(positions) {
+    if (!db) await createEmpty();
+    db.run("BEGIN TRANSACTION;");
+    try {
+      positions.forEach((position) => {
+        run(
+          `INSERT INTO position (
+            position_id,
+            project_id,
+            external_role_id,
+            name,
+            description,
+            start_date,
+            end_date,
+            status
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(position_id) DO UPDATE SET
+            project_id = excluded.project_id,
+            external_role_id = excluded.external_role_id,
+            name = excluded.name,
+            description = excluded.description,
+            start_date = excluded.start_date,
+            end_date = excluded.end_date,
+            status = excluded.status`,
+          [
+            position.id,
+            position.projectId,
+            position.externalRoleId || null,
+            position.name,
+            position.description || null,
+            position.startDate || null,
+            position.endDate || null,
+            position.status
+          ]
+        );
+
+        run("DELETE FROM position_skill WHERE position_id = ?", [position.id]);
+        (position.skills || []).forEach((skillId) => run(
+          "INSERT INTO position_skill (position_id, skill_id, required, level) VALUES (?, ?, 1, ?)",
+          [position.id, skillId, position.skillLevels ? position.skillLevels[skillId] || null : null]
+        ));
+      });
+
+      db.run("COMMIT;");
+      db.run("PRAGMA optimize;");
+      return readAll();
+    } catch (error) {
+      db.run("ROLLBACK;");
+      throw error;
+    }
+  }
+
   async function addPositionRoles(positionId, roleIds) {
     if (!db) await createEmpty();
     const toAdd = roleIds.filter(Boolean);
@@ -1113,6 +1166,7 @@
     saveAllocationCalendars,
     saveImportBatch,
     savePosition,
+    savePositions,
     addPositionRoles,
     saveApplication,
     readAll,

@@ -8,6 +8,7 @@
     calendarView: "month",
     calendarSelectedDate: null,
     pipelineView: "kanban",
+    selectedPositionIds: new Set(),
     data: structuredClone(window.staffingSeed),
     dbMode: "memory"
   };
@@ -479,6 +480,42 @@
       });
     });
 
+    document.querySelectorAll("[data-position-select]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        if (cb.checked) state.selectedPositionIds.add(cb.dataset.positionSelect);
+        else state.selectedPositionIds.delete(cb.dataset.positionSelect);
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-position-select-all]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        const allCheckboxes = document.querySelectorAll("[data-position-select]");
+        allCheckboxes.forEach((box) => {
+          if (cb.checked) state.selectedPositionIds.add(box.dataset.positionSelect);
+          else state.selectedPositionIds.delete(box.dataset.positionSelect);
+        });
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-position-bulk-copy]").forEach((button) => {
+      button.addEventListener("click", () => bulkCopyPositions());
+    });
+
+    document.querySelectorAll("[data-position-export]").forEach((button) => {
+      button.addEventListener("click", exportPositionsToExcel);
+    });
+
+    document.querySelectorAll("[data-position-import]").forEach((input) => {
+      input.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        await importPositionsFromExcel(file);
+        event.target.value = "";
+      });
+    });
+
     document.querySelectorAll("[data-application-new]").forEach((button) => {
       button.addEventListener("click", () => openApplicationForm());
     });
@@ -628,6 +665,7 @@
     const projects = state.data.projects;
     const positions = filterItems(state.data.positions, ["name", "description", "status"])
       .filter((position) => state.selectedProjectId === "all" || position.projectId === state.selectedProjectId);
+    const selCount = state.selectedPositionIds.size;
 
     return `
       <section class="panel">
@@ -640,9 +678,18 @@
             <select data-project-filter aria-label="Filtrar por projeto">
               <option value="all"${state.selectedProjectId === "all" ? " selected" : ""}>Todos os projetos</option>
               ${projects.map((project) => `
-                <option value="${project.id}"${state.selectedProjectId === project.id ? " selected" : ""}>${project.name}</option>
+                <option value="${project.id}"${state.selectedProjectId === project.id ? " selected" : ""}>${escapeHtml(project.name)}</option>
               `).join("")}
             </select>
+            <button class="ghost-button compact" type="button" data-position-export>Exportar Excel</button>
+            <label class="file-button compact">
+              Importar Excel
+              <input type="file" accept=".xlsx,.xls" data-position-import>
+            </label>
+            ${selCount ? `
+              <span class="selection-badge">${selCount} selecionada(s)</span>
+              <button class="ghost-button compact" type="button" data-position-bulk-copy>Copiar</button>
+            ` : ""}
             <button class="primary-button compact" type="button" data-position-new>Nova posicao</button>
           </div>
         </div>
@@ -1784,11 +1831,14 @@
   }
 
   function positionsTable(positions) {
+    const allIds = positions.map((p) => p.id);
+    const allSelected = allIds.length > 0 && allIds.every((id) => state.selectedPositionIds.has(id));
     return `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
+              <th style="width:36px"><input type="checkbox" data-position-select-all ${allSelected ? "checked" : ""} aria-label="Selecionar todos"></th>
               <th>Posicao</th>
               <th>Projeto</th>
               <th>Role</th>
@@ -1801,23 +1851,24 @@
           <tbody>
             ${positions.map((position) => {
               const project = byId("projects", position.projectId);
-              const positionRoles = position.externalRoleIds || [];
-              const roleLabel = positionRoles.length
-                ? positionRoles.map((r) => `<span class="mono-text">${escapeHtml(r)}</span>`).join(" ")
+              const roleLabel = position.externalRoleId
+                ? `<span class="mono-text">${escapeHtml(position.externalRoleId)}</span>`
                 : `<span class="warning-text">Sem Role</span>`;
               const apps = state.data.applications.filter((app) => app.positionId === position.id);
+              const selected = state.selectedPositionIds.has(position.id);
               return `
-                <tr>
-                  <td><strong>${position.name}</strong></td>
-                  <td>${project.name}</td>
+                <tr class="${selected ? "row-selected" : ""}">
+                  <td><input type="checkbox" data-position-select="${escapeAttr(position.id)}" ${selected ? "checked" : ""} aria-label="Selecionar"></td>
+                  <td><strong>${escapeHtml(position.name)}</strong></td>
+                  <td>${escapeHtml(project ? project.name : "")}</td>
                   <td>${roleLabel}</td>
                   <td>${statusPill(position.status)}</td>
-                  <td>${formatDate(position.startDate)} - ${formatDate(position.endDate)}</td>
+                  <td>${formatDate(position.startDate)} – ${formatDate(position.endDate)}</td>
                   <td>${apps.length}</td>
-                  <td><button class="ghost-button compact" type="button" data-position-edit="${position.id}">Editar</button></td>
+                  <td><button class="ghost-button compact" type="button" data-position-edit="${escapeAttr(position.id)}">Editar</button></td>
                 </tr>
               `;
-            }).join("") || tableEmpty(7, "Nenhuma posicao encontrada.")}
+            }).join("") || tableEmpty(8, "Nenhuma posicao encontrada.")}
           </tbody>
         </table>
       </div>
@@ -2771,6 +2822,131 @@
     });
 
     return { candidates, errors, created, updated };
+  }
+
+  async function exportPositionsToExcel() {
+    if (!window.staffingExcel) {
+      toast("Exportacao Excel nao esta disponivel.");
+      return;
+    }
+
+    const projectsById = Object.fromEntries(state.data.projects.map((p) => [p.id, p]));
+    const rows = state.data.positions.map((position) => ({
+      Id: position.id,
+      ProjectId: position.projectId,
+      ProjectName: (projectsById[position.projectId] || {}).name || "",
+      Name: position.name,
+      Description: position.description || "",
+      ExternalRoleId: position.externalRoleId || "",
+      StartDate: position.startDate || "",
+      EndDate: position.endDate || "",
+      Status: position.status,
+      Skills: skillNamesWithLevels(position.skills, position.skillLevels).join(", ")
+    }));
+
+    try {
+      await window.staffingExcel.exportSheet("staffing_positions.xlsx", "Positions", rows);
+      toast("Posicoes exportadas para Excel.");
+    } catch (error) {
+      toast("Nao foi possivel exportar Posicoes.");
+      console.error(error);
+    }
+  }
+
+  async function importPositionsFromExcel(file) {
+    if (!window.staffingExcel) {
+      toast("Importacao Excel nao esta disponivel.");
+      return;
+    }
+
+    try {
+      const rows = await window.staffingExcel.readFirstSheet(file);
+      const result = parsePositionImportRows(rows);
+
+      if (result.errors.length) {
+        toast(`Importacao bloqueada: ${result.errors.length} erro(s) encontrados.`);
+        showImportErrors("Posicoes", result.errors);
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Importar Posicoes?\n\nNovos: ${result.created}\nAtualizados: ${result.updated}\n\nA importacao nao apaga registros.`
+      );
+      if (!confirmed) return;
+
+      if (window.staffingDatabase) {
+        state.data = await window.staffingDatabase.savePositions(result.positions);
+      } else {
+        result.positions.forEach((position) => {
+          const index = state.data.positions.findIndex((item) => item.id === position.id);
+          if (index >= 0) state.data.positions[index] = position;
+          else state.data.positions.push(position);
+        });
+      }
+
+      state.dbMode = "dirty";
+      updateDbStatus("Banco alterado nao salvo");
+      render();
+      toast(`Posicoes importadas: ${result.created} nova(s), ${result.updated} atualizada(s).`);
+    } catch (error) {
+      toast("Nao foi possivel importar Posicoes.");
+      console.error(error);
+    }
+  }
+
+  function parsePositionImportRows(rows) {
+    const errors = [];
+    const positions = [];
+    let created = 0;
+    let updated = 0;
+    const existingIds = new Set(state.data.positions.map((p) => p.id));
+    const projectIds = new Set(state.data.projects.map((p) => p.id));
+    const seenIds = new Set();
+    const validStatuses = new Set(["DRAFT", "OPEN", "ON_HOLD", "FILLED", "CANCELLED", "CLOSED"]);
+
+    rows.forEach((rawRow, index) => {
+      const rowNumber = index + 2;
+      const row = normalizeRow(rawRow);
+      const id = cleanCell(row.id);
+      const projectId = cleanCell(row.projectid);
+      const name = cleanCell(row.name);
+      const description = cleanCell(row.description);
+      const externalRoleId = cleanCell(row.externalroleid);
+      const startDate = normalizeDateCell(row.startdate);
+      const endDate = normalizeDateCell(row.enddate);
+      const status = cleanCell(row.status).toUpperCase() || "DRAFT";
+      const skillEntries = parseSkillEntriesCell(row.skills, rowNumber, errors);
+      const skills = skillEntries.map((entry) => entry.id);
+
+      if (!name) errors.push(`Linha ${rowNumber}: Name e obrigatorio.`);
+      if (!projectId) errors.push(`Linha ${rowNumber}: ProjectId e obrigatorio.`);
+      if (projectId && !projectIds.has(projectId)) errors.push(`Linha ${rowNumber}: ProjectId nao existe no cadastro de projetos.`);
+      if (!validStatuses.has(status)) errors.push(`Linha ${rowNumber}: Status deve ser DRAFT, OPEN, ON_HOLD, FILLED, CANCELLED ou CLOSED.`);
+      if (startDate && endDate && startDate > endDate) errors.push(`Linha ${rowNumber}: StartDate nao pode ser maior que EndDate.`);
+      if (id && !existingIds.has(id)) errors.push(`Linha ${rowNumber}: Id informado nao existe no banco.`);
+      if (id && seenIds.has(id)) errors.push(`Linha ${rowNumber}: Id duplicado no arquivo.`);
+
+      const finalId = id || createId();
+      seenIds.add(finalId);
+      positions.push({
+        id: finalId,
+        projectId,
+        name,
+        description,
+        externalRoleId,
+        startDate: startDate || "",
+        endDate: endDate || "",
+        status,
+        skills,
+        skillLevels: skillLevelsFromEntries(skillEntries),
+        externalRoleIds: externalRoleId ? [externalRoleId] : []
+      });
+
+      if (id) updated += 1;
+      else created += 1;
+    });
+
+    return { positions, errors, created, updated };
   }
 
   async function importPeopleFromExcel(file, onProgress = () => {}) {
@@ -3894,6 +4070,37 @@
       .join("");
   }
 
+  async function bulkCopyPositions() {
+    const ids = [...state.selectedPositionIds];
+    if (!ids.length) return;
+    const positions = ids.map((id) => byId("positions", id)).filter(Boolean);
+    try {
+      for (const position of positions) {
+        const copy = {
+          ...position,
+          id: createId(),
+          name: `${position.name} (copia)`,
+          skills: [...(position.skills || [])],
+          skillLevels: { ...(position.skillLevels || {}) },
+          externalRoleIds: [...(position.externalRoleIds || [])]
+        };
+        if (window.staffingDatabase) {
+          state.data = await window.staffingDatabase.savePosition(copy);
+        } else {
+          state.data.positions.push(copy);
+        }
+      }
+      state.dbMode = "dirty";
+      updateDbStatus("Banco alterado nao salvo");
+      state.selectedPositionIds.clear();
+      render();
+      toast(`${positions.length} posicao(oes) copiada(s).`);
+    } catch (e) {
+      toast("Nao foi possivel copiar as posicoes.");
+      console.error(e);
+    }
+  }
+
   async function savePositionFromForm(event) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -4209,7 +4416,8 @@
         ? `Candidatura salva com ${alerts.length} alerta(s) de alocacao.`
         : "Candidatura salva. Use Salvar banco para exportar o staffing.db.");
     } catch (error) {
-      toast("Nao foi possivel salvar a candidatura.");
+      const msg = error && error.message ? error.message : String(error);
+      toast(`Nao foi possivel salvar a candidatura: ${msg}`);
       console.error(error);
     }
   }
