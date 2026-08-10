@@ -2021,6 +2021,48 @@ tfoot td {
   font-weight: 750;
 }
 
+.num-col {
+  text-align: right;
+  width: 90px;
+  font-variant-numeric: tabular-nums;
+}
+
+.project-roles-layout {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(560px, 1fr));
+  gap: 20px;
+  padding: 20px;
+}
+
+.project-roles-group {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.project-roles-group-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background: var(--surface-2);
+  border-bottom: 1px solid var(--line);
+}
+
+.project-roles-group .data-table {
+  margin: 0;
+  border-radius: 0;
+  border: none;
+}
+
+.project-roles-group .muted-text {
+  padding: 16px;
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;

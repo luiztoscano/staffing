@@ -1,5 +1,6 @@
 window.staffingSeed = {
   projects: [],
+  projectRoles: [],
   skills: [],
   companies: [
     { id: "company-accenture", name: "Accenture", kind: "Consultoria", active: true },

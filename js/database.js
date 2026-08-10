@@ -67,6 +67,14 @@
       PRIMARY KEY (position_id, external_role_id)
     );
 
+    CREATE TABLE IF NOT EXISTS project_role (
+      project_role_id TEXT PRIMARY KEY,
+      project_id TEXT NOT NULL,
+      role_number TEXT NOT NULL,
+      UNIQUE (project_id, role_number),
+      FOREIGN KEY (project_id) REFERENCES project(project_id) ON UPDATE CASCADE ON DELETE CASCADE
+    );
+
     CREATE TABLE IF NOT EXISTS candidate (
       candidate_id TEXT PRIMARY KEY,
       imported_person_id TEXT,
@@ -237,6 +245,7 @@
     "ALTER TABLE position ADD COLUMN external_role_id TEXT",
     "CREATE TABLE IF NOT EXISTS position_role (position_id TEXT NOT NULL REFERENCES position(position_id) ON DELETE CASCADE, external_role_id TEXT NOT NULL, PRIMARY KEY (position_id, external_role_id))",
     "INSERT OR IGNORE INTO position_role (position_id, external_role_id) SELECT position_id, external_role_id FROM position WHERE external_role_id IS NOT NULL AND external_role_id <> ''",
+    "CREATE TABLE IF NOT EXISTS project_role (project_role_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, role_number TEXT NOT NULL, UNIQUE (project_id, role_number), FOREIGN KEY (project_id) REFERENCES project(project_id) ON UPDATE CASCADE ON DELETE CASCADE)",
     `PRAGMA foreign_keys=OFF;
      CREATE TABLE IF NOT EXISTS _application_new (
        application_id TEXT PRIMARY KEY,
@@ -590,7 +599,18 @@
 
     db.run("BEGIN TRANSACTION;");
     try {
-      people.forEach((person) => run(
+      people.forEach((person) => {
+        // Remove stale rows that share the same email or personnel_number but have a different ID.
+        // This handles the case where a person's key fields changed between exports.
+        if (person.email) run(
+          "DELETE FROM imported_person WHERE resource_email = ? AND imported_person_id != ?",
+          [person.email, person.id]
+        );
+        if (person.personnelNumber) run(
+          "DELETE FROM imported_person WHERE personnel_number = ? AND imported_person_id != ?",
+          [person.personnelNumber, person.id]
+        );
+        run(
         `INSERT INTO imported_person (
           imported_person_id, resource_name, resource_email, corporate_id, personnel_number, market_unit,
           country, metro_city, location_path, job_family_group, role_family,
@@ -647,7 +667,8 @@
           person.skillsText || null, person.certifications || null, person.languages || null,
           person.cvLink || null, person.active ? 1 : 0
         ]
-      ));
+        );
+      });
 
       db.run("COMMIT;");
       db.run("PRAGMA optimize;");
@@ -663,6 +684,9 @@
       await createEmpty();
     }
 
+    // FK checks disabled during bulk import — imported_person_id may reference
+    // a person not yet in the DB (e.g. calendar imported before people file).
+    db.run("PRAGMA foreign_keys = OFF");
     db.run("BEGIN TRANSACTION;");
     try {
       calendars.forEach((item) => run(
@@ -723,10 +747,12 @@
       ));
 
       db.run("COMMIT;");
+      db.run("PRAGMA foreign_keys = ON");
       db.run("PRAGMA optimize;");
       return readAll();
     } catch (error) {
       db.run("ROLLBACK;");
+      db.run("PRAGMA foreign_keys = ON");
       throw error;
     }
   }
@@ -783,6 +809,27 @@
       db.run("ROLLBACK;");
       throw error;
     }
+  }
+
+  async function saveProjectRole(projectRole) {
+    if (!db) await createEmpty();
+    run(
+      `INSERT INTO project_role (project_role_id, project_id, role_number)
+       VALUES (?, ?, ?)
+       ON CONFLICT(project_role_id) DO UPDATE SET
+         project_id = excluded.project_id,
+         role_number = excluded.role_number`,
+      [projectRole.id, projectRole.projectId, projectRole.roleNumber]
+    );
+    db.run("PRAGMA optimize;");
+    return readAll();
+  }
+
+  async function deleteProjectRole(id) {
+    if (!db) await createEmpty();
+    run("DELETE FROM project_role WHERE project_role_id = ?", [id]);
+    db.run("PRAGMA optimize;");
+    return readAll();
   }
 
   async function savePositions(positions) {
@@ -1069,6 +1116,7 @@
 
     return {
       projects: rows("SELECT project_id AS id, name, description, start_date AS startDate, end_date AS endDate, status FROM project ORDER BY name"),
+      projectRoles: rows("SELECT project_role_id AS id, project_id AS projectId, role_number AS roleNumber FROM project_role ORDER BY project_id, role_number"),
       skills: rows("SELECT skill_id AS id, name, active FROM skill ORDER BY name").map((item) => ({ ...item, active: Boolean(item.active) })),
       companies: rows("SELECT company_id AS id, name, kind, active FROM company ORDER BY name").map((item) => ({ ...item, active: Boolean(item.active) })),
       positions: rows("SELECT position_id AS id, project_id AS projectId, external_role_id AS externalRoleId, name, description, start_date AS startDate, end_date AS endDate, status FROM position ORDER BY name")
@@ -1116,6 +1164,7 @@
   function emptyData() {
     return {
       projects: [],
+      projectRoles: [],
       skills: [],
       companies: [],
       positions: [],
@@ -1165,6 +1214,8 @@
     saveImportedPeople,
     saveAllocationCalendars,
     saveImportBatch,
+    saveProjectRole,
+    deleteProjectRole,
     savePosition,
     savePositions,
     addPositionRoles,

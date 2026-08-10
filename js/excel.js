@@ -17,10 +17,25 @@
     XLSX.writeFile(workbook, fileName);
   }
 
+  function checkEncrypted(error) {
+    const msg = error && error.message ? error.message : String(error);
+    if (msg.includes("Encrypt") || msg.includes("encrypt") || msg.includes("ECMA-376") || msg.includes("password")) {
+      throw new Error(
+        "O arquivo esta protegido por senha. Abra-o no Excel, va em Arquivo > Informacoes > Proteger Pasta de Trabalho > Criptografar com Senha e remova a senha antes de importar."
+      );
+    }
+    throw error;
+  }
+
   async function readFirstSheet(file) {
     const XLSX = await ensureXlsx();
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    let workbook;
+    try {
+      workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    } catch (e) {
+      checkEncrypted(e);
+    }
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) return [];
     return XLSX.utils.sheet_to_json(workbook.Sheets[firstSheetName], {
@@ -32,7 +47,12 @@
   async function readFirstTabularSheet(file) {
     const XLSX = await ensureXlsx();
     const buffer = await file.arrayBuffer();
-    const workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    let workbook;
+    try {
+      workbook = XLSX.read(buffer, { type: "array", cellDates: true });
+    } catch (e) {
+      checkEncrypted(e);
+    }
     const firstSheetName = workbook.SheetNames[0];
     if (!firstSheetName) return [];
     const worksheet = workbook.Sheets[firstSheetName];

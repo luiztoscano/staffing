@@ -102,6 +102,7 @@
   const views = [
     { id: "dashboard", label: "Dashboard", icon: "▦", title: "Dashboard", eyebrow: "Visao geral" },
     { id: "projects", label: "Projetos", icon: "◇", title: "Projetos", eyebrow: "Cadastro" },
+    { id: "projectroles", label: "Roles", icon: "#", title: "Roles de Projeto", eyebrow: "Numeros de role por projeto" },
     { id: "positions", label: "Posicoes", icon: "□", title: "Posicoes", eyebrow: "Vagas do staffing" },
     { id: "candidates", label: "Candidatos", icon: "○", title: "Candidatos", eyebrow: "Pessoas e custos" },
     { id: "companies", label: "Empresas", icon: "▣", title: "Empresas", eyebrow: "Cadastro" },
@@ -251,6 +252,7 @@
     const renderers = {
       dashboard: renderDashboard,
       projects: renderProjects,
+      projectroles: renderProjectRoles,
       positions: renderPositions,
       candidates: renderCandidates,
       companies: renderCompanies,
@@ -466,6 +468,36 @@
         const file = event.dataTransfer.files[0];
         if (!file) return;
         await handleImportFile(dropArea.dataset.importDrop, file);
+      });
+    });
+
+    document.querySelectorAll("[data-project-role-new]").forEach((button) => {
+      button.addEventListener("click", () => openProjectRoleForm(button.dataset.projectRoleNew));
+    });
+
+    document.querySelectorAll("[data-project-role-delete]").forEach((button) => {
+      button.addEventListener("click", async () => {
+        if (!window.confirm("Excluir esta role do projeto?")) return;
+        try {
+          if (window.staffingDatabase) {
+            state.data = await window.staffingDatabase.deleteProjectRole(button.dataset.projectRoleDelete);
+          } else {
+            state.data.projectRoles = state.data.projectRoles.filter((r) => r.id !== button.dataset.projectRoleDelete);
+          }
+          state.dbMode = "dirty";
+          updateDbStatus("Banco alterado nao salvo");
+          render();
+        } catch (e) {
+          toast("Nao foi possivel excluir a role.");
+          console.error(e);
+        }
+      });
+    });
+
+    document.querySelectorAll("[data-project-role-filter]").forEach((sel) => {
+      sel.addEventListener("change", () => {
+        state.selectedProjectId = sel.value;
+        render();
       });
     });
 
@@ -694,6 +726,87 @@
           </div>
         </div>
         ${positionsTable(positions)}
+      </section>
+    `;
+  }
+
+  function renderProjectRoles() {
+    const projects = state.data.projects;
+    const today = todayIso();
+    const calendars = state.data.allocationCalendars || [];
+
+    return `
+      <section class="panel">
+        <div class="panel-header">
+          <div>
+            <span class="eyebrow">Roles de Projeto</span>
+            <h2>Numeros de role por projeto</h2>
+          </div>
+          <div class="toolbar">
+            <select data-project-role-filter aria-label="Filtrar por projeto">
+              <option value="all"${state.selectedProjectId === "all" ? " selected" : ""}>Todos os projetos</option>
+              ${projects.map((p) => `
+                <option value="${escapeAttr(p.id)}"${state.selectedProjectId === p.id ? " selected" : ""}>${escapeHtml(p.name)}</option>
+              `).join("")}
+            </select>
+          </div>
+        </div>
+        ${projects.length === 0 ? emptyState("Nenhum projeto cadastrado.") : `
+          <div class="project-roles-layout">
+            ${projects.filter((p) => state.selectedProjectId === "all" || p.id === state.selectedProjectId).map((project) => {
+              const roles = (state.data.projectRoles || []).filter((r) => r.projectId === project.id);
+              return `
+                <div class="project-roles-group">
+                  <div class="project-roles-group-header">
+                    <strong>${escapeHtml(project.name)}</strong>
+                    <button class="ghost-button compact" type="button" data-project-role-new="${escapeAttr(project.id)}">+ Adicionar role</button>
+                  </div>
+                  ${roles.length ? `
+                    <table class="data-table">
+                      <thead>
+                        <tr>
+                          <th>Numero da Role</th>
+                          <th>Alocado</th>
+                          <th>Status</th>
+                          <th>Periodo</th>
+                          <th style="width:48px"></th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        ${roles.map((r) => {
+                          const allocs = calendars.filter((cal) =>
+                            cal.roleIdExternal === r.roleNumber &&
+                            cal.calendarStartDate && cal.calendarEndDate &&
+                            cal.calendarStartDate <= today && cal.calendarEndDate >= today
+                          );
+                          if (!allocs.length) {
+                            return `
+                              <tr>
+                                <td><code>${escapeHtml(r.roleNumber)}</code></td>
+                                <td class="muted-cell" colspan="2">Sem alocacao vigente</td>
+                                <td></td>
+                                <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>
+                              </tr>
+                            `;
+                          }
+                          return allocs.map((cal, i) => `
+                            <tr>
+                              ${i === 0 ? `<td rowspan="${allocs.length}"><code>${escapeHtml(r.roleNumber)}</code></td>` : ""}
+                              <td>${escapeHtml(cal.employeeName || "—")}</td>
+                              <td>${escapeHtml(cal.candidateStatus || "—")}</td>
+                              <td class="muted-cell" style="white-space:nowrap;font-size:12px">${formatDate(cal.calendarStartDate)} – ${formatDate(cal.calendarEndDate)}</td>
+                              ${i === 0 ? `<td rowspan="${allocs.length}"><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>` : ""}
+                            </tr>
+                          `).join("");
+                        }).join("")}
+                      </tbody>
+                    </table>
+                  ` : `<p class="muted-text">Nenhuma role cadastrada para este projeto.</p>`}
+                </div>
+              `;
+            }).join("")}
+          </div>
+        `}
       </section>
     `;
   }
@@ -1696,24 +1809,34 @@
             <button class="primary-button compact" type="button" data-skill-new>Nova skill</button>
           </div>
         </div>
-        <div class="skill-cloud">
-          ${skills.map((skill) => {
-            const demand = state.data.positions.filter((position) => position.skills.includes(skill.id)).length;
-            const supply = state.data.candidates.filter((candidate) => candidate.skills.includes(skill.id)).length;
-            return `
-              <article class="skill-card">
-                <div>
-                  <strong>${skill.name}</strong>
-                  <span>${demand} posicoes · ${supply} candidatos</span>
-                </div>
-                <div class="skill-card-footer">
-                  ${statusPill(skill.active ? "ACTIVE" : "CLOSED", skill.active ? "Ativa" : "Inativa")}
-                  <button class="ghost-button compact" type="button" data-skill-edit="${skill.id}">Editar</button>
-                </div>
-              </article>
-            `;
-          }).join("") || emptyState("Nenhuma skill encontrada.")}
-        </div>
+        ${skills.length ? `
+          <table class="data-table">
+            <thead>
+              <tr>
+                <th>Nome</th>
+                <th class="num-col">Posicoes</th>
+                <th class="num-col">Candidatos</th>
+                <th>Status</th>
+                <th style="width:72px"></th>
+              </tr>
+            </thead>
+            <tbody>
+              ${skills.map((skill) => {
+                const demand = state.data.positions.filter((p) => p.skills.includes(skill.id)).length;
+                const supply = state.data.candidates.filter((c) => c.skills.includes(skill.id)).length;
+                return `
+                  <tr>
+                    <td><strong>${escapeHtml(skill.name)}</strong></td>
+                    <td class="num-col">${demand}</td>
+                    <td class="num-col">${supply}</td>
+                    <td>${statusPill(skill.active ? "ACTIVE" : "CLOSED", skill.active ? "Ativa" : "Inativa")}</td>
+                    <td><button class="ghost-button compact" type="button" data-skill-edit="${escapeAttr(skill.id)}">Editar</button></td>
+                  </tr>
+                `;
+              }).join("")}
+            </tbody>
+          </table>
+        ` : emptyState("Nenhuma skill encontrada.")}
       </section>
     `;
   }
@@ -3014,7 +3137,8 @@
       const skippedNote = result.skipped ? ` Ignoradas: ${result.skipped}.` : "";
       toast(`Pessoas importadas: ${result.created} nova(s), ${result.updated} atualizada(s). Skills novas: ${result.skillsCreated}.${skippedNote}`);
     } catch (error) {
-      toast("Nao foi possivel importar Pessoas.");
+      const msg = error && error.message ? error.message : String(error);
+      toast(`Nao foi possivel importar Pessoas: ${msg}`);
       console.error(error);
     }
   }
@@ -3163,7 +3287,8 @@
       render();
       toast(`Calendarios importados: ${result.calendars.length} registro(s). Ignorados: ${result.skipped}.`);
     } catch (error) {
-      toast("Nao foi possivel importar Calendarios.");
+      const msg = error && error.message ? error.message : String(error);
+      toast(`Nao foi possivel importar Calendarios: ${msg}`);
       console.error(error);
     }
   }
@@ -3842,6 +3967,58 @@
     }
   }
 
+  function openProjectRoleForm(projectId) {
+    const project = byId("projects", projectId);
+    if (!project) return;
+    openModal(`
+      <section class="modal-card" style="max-width:400px">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow">${escapeHtml(project.name)}</span>
+            <h2>Adicionar Role</h2>
+          </div>
+          <button class="icon-button light" type="button" data-modal-close aria-label="Fechar">×</button>
+        </div>
+        <form id="projectRoleForm" class="modal-body" autocomplete="off">
+          <input type="hidden" name="projectId" value="${escapeAttr(projectId)}">
+          <div class="form-field">
+            <label class="form-field-label" for="roleNumber">Numero da Role</label>
+            <input id="roleNumber" class="form-input" type="text" name="roleNumber" placeholder="Ex: 12345678" required autofocus>
+          </div>
+          <div class="modal-footer">
+            <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
+            <button class="primary-button" type="submit">Salvar</button>
+          </div>
+        </form>
+      </section>
+    `);
+
+    document.getElementById("projectRoleForm").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const formData = new FormData(e.target);
+      const roleNumber = String(formData.get("roleNumber") || "").trim();
+      if (!roleNumber) return;
+      const projectRole = { id: createId(), projectId, roleNumber };
+      try {
+        if (window.staffingDatabase) {
+          state.data = await window.staffingDatabase.saveProjectRole(projectRole);
+        } else {
+          state.data.projectRoles = state.data.projectRoles || [];
+          state.data.projectRoles.push(projectRole);
+        }
+        state.dbMode = "dirty";
+        updateDbStatus("Banco alterado nao salvo");
+        closeModal();
+        render();
+        toast("Role adicionada.");
+      } catch (err) {
+        const msg = err && err.message ? err.message : String(err);
+        toast(`Nao foi possivel salvar a role: ${msg}`);
+        console.error(err);
+      }
+    });
+  }
+
   function openPositionForm(position) {
     if (!state.data.projects.length) {
       toast("Cadastre um projeto antes de criar posicoes.");
@@ -3907,8 +4084,13 @@
               </label>
 
               <label class="span-2">
-                <span>Role externa (ID)</span>
-                <input name="externalRoleId" value="${escapeAttr(values.externalRoleId || "")}" maxlength="200" placeholder="Ex: ROLE-12345">
+                <span>Role do projeto</span>
+                <select name="externalRoleId" id="positionRoleSelect">
+                  <option value="">— Nenhuma —</option>
+                  ${(state.data.projectRoles || []).filter((r) => r.projectId === values.projectId).map((r) => `
+                    <option value="${escapeAttr(r.roleNumber)}" ${values.externalRoleId === r.roleNumber ? "selected" : ""}>${escapeHtml(r.roleNumber)}</option>
+                  `).join("")}
+                </select>
               </label>
 
               <label>
@@ -3972,6 +4154,15 @@
     form.dataset.selectedSkills = JSON.stringify(skillEntriesFromValues(values));
     renderPositionFormSkills(form);
     form.addEventListener("submit", savePositionFromForm);
+
+    form.querySelector("[name='projectId']").addEventListener("change", (e) => {
+      const roleSelect = form.querySelector("#positionRoleSelect");
+      if (!roleSelect) return;
+      const projectId = e.target.value;
+      const projectRoles = (state.data.projectRoles || []).filter((r) => r.projectId === projectId);
+      roleSelect.innerHTML = `<option value="">— Nenhuma —</option>` +
+        projectRoles.map((r) => `<option value="${escapeAttr(r.roleNumber)}">${escapeHtml(r.roleNumber)}</option>`).join("");
+    });
     form.querySelector("[data-position-form-skill-add]").addEventListener("click", () => addPositionFormSkill(form));
     form.addEventListener("click", (event) => {
       const removeSkill = event.target.closest("[data-remove-position-form-skill]");
