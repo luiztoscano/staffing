@@ -82,7 +82,8 @@
       external_person_id TEXT UNIQUE,
       name TEXT NOT NULL,
       email TEXT COLLATE NOCASE UNIQUE,
-      cost_amount NUMERIC NOT NULL DEFAULT 0 CHECK (cost_amount >= 0),
+      ucr_amount NUMERIC NOT NULL DEFAULT 0 CHECK (ucr_amount >= 0),
+      lcr_amount NUMERIC NOT NULL DEFAULT 0 CHECK (lcr_amount >= 0),
       cost_currency TEXT NOT NULL DEFAULT 'BRL' CHECK (cost_currency IN ('BRL', 'USD', 'EUR', 'GBP')),
       cost_period TEXT NOT NULL DEFAULT 'MONTH' CHECK (cost_period IN ('HOUR', 'DAY', 'MONTH')),
       active INTEGER NOT NULL DEFAULT 1 CHECK (active IN (0, 1)),
@@ -246,6 +247,9 @@
     "CREATE TABLE IF NOT EXISTS position_role (position_id TEXT NOT NULL REFERENCES position(position_id) ON DELETE CASCADE, external_role_id TEXT NOT NULL, PRIMARY KEY (position_id, external_role_id))",
     "INSERT OR IGNORE INTO position_role (position_id, external_role_id) SELECT position_id, external_role_id FROM position WHERE external_role_id IS NOT NULL AND external_role_id <> ''",
     "CREATE TABLE IF NOT EXISTS project_role (project_role_id TEXT PRIMARY KEY, project_id TEXT NOT NULL, role_number TEXT NOT NULL, UNIQUE (project_id, role_number), FOREIGN KEY (project_id) REFERENCES project(project_id) ON UPDATE CASCADE ON DELETE CASCADE)",
+    "ALTER TABLE candidate ADD COLUMN ucr_amount NUMERIC NOT NULL DEFAULT 0 CHECK (ucr_amount >= 0)",
+    "ALTER TABLE candidate ADD COLUMN lcr_amount NUMERIC NOT NULL DEFAULT 0 CHECK (lcr_amount >= 0)",
+    "UPDATE candidate SET ucr_amount = cost_amount WHERE ucr_amount = 0 AND cost_amount > 0",
     `PRAGMA foreign_keys=OFF;
      CREATE TABLE IF NOT EXISTS _application_new (
        application_id TEXT PRIMARY KEY,
@@ -485,19 +489,21 @@
           external_person_id,
           name,
           email,
-          cost_amount,
+          ucr_amount,
+          lcr_amount,
           cost_currency,
           cost_period,
           active
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(candidate_id) DO UPDATE SET
           imported_person_id = excluded.imported_person_id,
           company_id = excluded.company_id,
           external_person_id = excluded.external_person_id,
           name = excluded.name,
           email = excluded.email,
-          cost_amount = excluded.cost_amount,
+          ucr_amount = excluded.ucr_amount,
+          lcr_amount = excluded.lcr_amount,
           cost_currency = excluded.cost_currency,
           cost_period = excluded.cost_period,
           active = excluded.active`,
@@ -508,7 +514,8 @@
           candidate.externalPersonId || null,
           candidate.name,
           candidate.email || null,
-          candidate.costAmount,
+          candidate.ucrAmount ?? 0,
+          candidate.lcrAmount ?? 0,
           candidate.costCurrency,
           candidate.costPeriod,
           candidate.active ? 1 : 0
@@ -546,19 +553,21 @@
             external_person_id,
             name,
             email,
-            cost_amount,
+            ucr_amount,
+            lcr_amount,
             cost_currency,
             cost_period,
             active
           )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
           ON CONFLICT(candidate_id) DO UPDATE SET
             imported_person_id = excluded.imported_person_id,
             company_id = excluded.company_id,
             external_person_id = excluded.external_person_id,
             name = excluded.name,
             email = excluded.email,
-            cost_amount = excluded.cost_amount,
+            ucr_amount = excluded.ucr_amount,
+            lcr_amount = excluded.lcr_amount,
             cost_currency = excluded.cost_currency,
             cost_period = excluded.cost_period,
             active = excluded.active`,
@@ -569,7 +578,8 @@
             candidate.externalPersonId || null,
             candidate.name,
             candidate.email || null,
-            candidate.costAmount,
+            candidate.ucrAmount ?? 0,
+            candidate.lcrAmount ?? 0,
             candidate.costCurrency,
             candidate.costPeriod,
             candidate.active ? 1 : 0
@@ -1067,8 +1077,8 @@
 
       data.candidates.forEach((item) => {
         run(
-          "INSERT INTO candidate (candidate_id, imported_person_id, company_id, external_person_id, name, email, cost_amount, cost_currency, cost_period, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-          [item.id, item.importedPersonId || null, item.companyId || null, item.externalPersonId, item.name, item.email, item.costAmount, item.costCurrency, item.costPeriod, item.active ? 1 : 0]
+          "INSERT INTO candidate (candidate_id, imported_person_id, company_id, external_person_id, name, email, ucr_amount, lcr_amount, cost_currency, cost_period, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+          [item.id, item.importedPersonId || null, item.companyId || null, item.externalPersonId, item.name, item.email, item.ucrAmount ?? 0, item.lcrAmount ?? 0, item.costCurrency, item.costPeriod, item.active ? 1 : 0]
         );
         item.skills.forEach((skillId) => run(
           "INSERT INTO candidate_skill (candidate_id, skill_id, level) VALUES (?, ?, ?)",
@@ -1125,7 +1135,7 @@
           const allRoles = [...new Set([item.externalRoleId, ...candidateRoles].filter(Boolean))];
           return { ...item, skills: idsFor("position_skill", "position_id", item.id), skillLevels: levelsFor("position_skill", "position_id", item.id), externalRoleIds: allRoles };
         }),
-      candidates: rows("SELECT candidate_id AS id, imported_person_id AS importedPersonId, company_id AS companyId, external_person_id AS externalPersonId, name, email, cost_amount AS costAmount, cost_currency AS costCurrency, cost_period AS costPeriod, active FROM candidate ORDER BY name")
+      candidates: rows("SELECT candidate_id AS id, imported_person_id AS importedPersonId, company_id AS companyId, external_person_id AS externalPersonId, name, email, ucr_amount AS ucrAmount, lcr_amount AS lcrAmount, cost_currency AS costCurrency, cost_period AS costPeriod, active FROM candidate ORDER BY name")
         .map((item) => ({ ...item, active: Boolean(item.active), skills: idsFor("candidate_skill", "candidate_id", item.id), skillLevels: levelsFor("candidate_skill", "candidate_id", item.id) })),
       importedPeople: rows("SELECT imported_person_id AS id, resource_name AS name, resource_email AS email, corporate_id AS corporateId, personnel_number AS personnelNumber, market_unit AS marketUnit, country, metro_city AS metroCity, location_path AS locationPath, job_family_group AS jobFamilyGroup, role_family AS roleFamily, resource_role AS resourceRole, level_group AS levelGroup, resource_level AS resourceLevel, specialization_1 AS specialization1, specialization_2 AS specialization2, specialization_3 AS specialization3, specialization_4 AS specialization4, deployed_to_entity AS deployedToEntity, first_staffable_date AS firstStaffableDate, percent_staffable AS percentStaffable, current_calendar_type AS currentCalendarType, current_calendar_start_date AS currentCalendarStartDate, current_calendar_end_date AS currentCalendarEndDate, current_calendar_client AS currentCalendarClient, current_calendar_project AS currentCalendarProject, skills_text AS skillsText, certifications, languages, cv_link AS cvLink, active FROM imported_person ORDER BY resource_name")
         .map((item) => ({ ...item, active: Boolean(item.active) })),

@@ -9,6 +9,8 @@
     calendarSelectedDate: null,
     pipelineView: "kanban",
     selectedPositionIds: new Set(),
+    projectDetailId: null,
+    projectDetailTab: "positions",
     data: structuredClone(window.staffingSeed),
     dbMode: "memory"
   };
@@ -236,14 +238,25 @@
       const button = event.target.closest("[data-view]");
       if (!button) return;
       state.view = button.dataset.view;
+      state.projectDetailId = null;
       render();
     });
   }
 
   function render() {
     const view = views.find((item) => item.id === state.view);
-    el.title.textContent = view.title;
-    el.eyebrow.textContent = view.eyebrow;
+    if (state.view === "projects" && state.projectDetailId) {
+      const project = byId("projects", state.projectDetailId);
+      el.title.textContent = project ? project.name : view.title;
+      el.eyebrow.textContent = "Projeto";
+    } else {
+      el.title.textContent = view.title;
+      el.eyebrow.textContent = view.eyebrow;
+    }
+
+    const hideTopbarExtras = state.view === "projects";
+    el.search.closest(".search-box").style.display = hideTopbarExtras ? "none" : "";
+    el.primaryAction.style.display = hideTopbarExtras ? "none" : "";
 
     document.querySelectorAll(".nav-item").forEach((button) => {
       button.setAttribute("aria-current", button.dataset.view === state.view ? "page" : "false");
@@ -347,10 +360,25 @@
       });
     });
 
-    document.querySelectorAll("[data-project-positions]").forEach((button) => {
+    document.querySelectorAll("[data-project-open]").forEach((button) => {
       button.addEventListener("click", () => {
-        const project = byId("projects", button.dataset.projectPositions);
-        if (project) openProjectPositionsModal(project);
+        state.projectDetailId = button.dataset.projectOpen;
+        state.projectDetailTab = "positions";
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-project-back]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.projectDetailId = null;
+        render();
+      });
+    });
+
+    document.querySelectorAll("[data-project-detail-tab]").forEach((button) => {
+      button.addEventListener("click", () => {
+        state.projectDetailTab = button.dataset.projectDetailTab;
+        render();
       });
     });
 
@@ -502,7 +530,10 @@
     });
 
     document.querySelectorAll("[data-position-new]").forEach((button) => {
-      button.addEventListener("click", () => openPositionForm());
+      button.addEventListener("click", () => {
+        if (state.projectDetailId) state.selectedProjectId = state.projectDetailId;
+        openPositionForm();
+      });
     });
 
     document.querySelectorAll("[data-position-edit]").forEach((button) => {
@@ -588,102 +619,88 @@
   }
 
   function renderDashboard() {
-    const alerts = getAlerts();
-    const confirmed = state.data.applications.filter((app) => app.status === "CONFIRMED").length;
-    const openPositions = state.data.positions.filter((position) => ["OPEN", "DRAFT"].includes(position.status)).length;
-    const activeCandidates = state.data.candidates.filter((candidate) => candidate.active).length;
+    const activeProjects = state.data.projects.filter((p) => p.status === "ACTIVE").length;
+    const activePositions = state.data.positions.filter((p) => !["CANCELLED", "CLOSED"].includes(p.status)).length;
+    const activeRoles = (state.data.projectRoles || []).filter((r) => {
+      const project = byId("projects", r.projectId);
+      return project && project.status === "ACTIVE";
+    }).length;
+    const activeApplications = state.data.applications.filter((a) => a.status !== "REJECTED" && a.status !== "CANCELLED").length;
 
     return `
       <section class="metric-grid">
-        ${metricCard("Posicoes abertas", openPositions, "Vagas em rascunho ou abertas")}
-        ${metricCard("Candidatos ativos", activeCandidates, "Pessoas disponiveis no cadastro")}
-        ${metricCard("Alertas ativos", alerts.length, "Conflitos e pendencias")}
+        ${metricCard("Projetos ativos", activeProjects, "Projetos com status Ativo")}
+        ${metricCard("Posicoes ativas", activePositions, "Posicoes nao canceladas ou encerradas")}
+        ${metricCard("Roles ativas", activeRoles, "Roles de projetos ativos")}
+        ${metricCard("Candidaturas ativas", activeApplications, "Candidaturas em andamento")}
       </section>
-
-      <section class="two-column">
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <span class="eyebrow">Pipeline</span>
-              <h2>Candidaturas por etapa</h2>
-            </div>
-            <button class="ghost-button" type="button" data-route="pipeline">Ver pipeline</button>
-          </div>
-          ${pipelineBars()}
-        </article>
-
-        <article class="panel">
-          <div class="panel-header">
-            <div>
-              <span class="eyebrow">Risco operacional</span>
-              <h2>Alertas principais</h2>
-            </div>
-            <button class="ghost-button" type="button" data-route="alerts">Ver alertas</button>
-          </div>
-          <div class="alert-list">
-            ${alerts.slice(0, 4).map(alertCard).join("") || emptyState("Nenhum alerta ativo.")}
-          </div>
-        </article>
-      </section>
-
-      <section class="panel">
-        <div class="panel-header">
-          <div>
-            <span class="eyebrow">Execucao</span>
-            <h2>Posicoes em andamento</h2>
-          </div>
-          <button class="ghost-button" type="button" data-route="positions">Abrir posicoes</button>
-        </div>
-        ${positionsTable(state.data.positions)}
-      </section>
-
-      <span class="visually-hidden">Candidaturas confirmadas: ${confirmed}</span>
     `;
   }
 
   function renderProjects() {
+    if (state.projectDetailId) {
+      const project = byId("projects", state.projectDetailId);
+      if (project) return renderProjectDetail(project);
+      state.projectDetailId = null;
+    }
+
     const projects = filterItems(state.data.projects, ["name", "description", "status"]);
+    const allAlerts = getAlerts();
+
     return `
       <section class="panel">
         <div class="panel-header">
-          <div>
-            <span class="eyebrow">Projetos</span>
-            <h2>Projetos com staffing</h2>
-          </div>
+          <div></div>
           <div class="toolbar">
-            <button class="ghost-button compact" type="button" data-project-export>Exportar Excel</button>
+            <button class="primary-button compact" type="button" data-project-new>+ Novo projeto</button>
             <label class="file-button compact">
               Importar Excel
               <input type="file" accept=".xlsx,.xls" data-project-import>
             </label>
-            <button class="primary-button compact" type="button" data-project-new>Novo projeto</button>
+            <button class="ghost-button compact" type="button" data-project-export>Exportar Excel</button>
           </div>
         </div>
         <div class="card-grid">
           ${projects.map((project) => {
-            const positions = state.data.positions.filter((position) => position.projectId === project.id);
+            const positions = state.data.positions.filter((p) => p.projectId === project.id);
+            const roles = (state.data.projectRoles || []).filter((r) => r.projectId === project.id);
+            const alertCount = allAlerts.filter((a) => a.projectId === project.id).length;
             const totals = projectCostTotals(positions, project);
             const totalLine = totals.size
               ? [...totals.entries()].map(([cur, val]) => formatCurrency(val, cur)).join(" + ")
               : null;
+            const statusKey = project.status ? project.status.toLowerCase() : "draft";
             return `
-              <article class="record-card">
-                <div class="record-head">
-                  <div>
-                    <strong>${escapeHtml(project.name)}</strong>
-                    <span>${project.description ? "Projeto de staffing" : "Sem descricao"}</span>
-                  </div>
+              <article class="record-card project-card project-card--${statusKey}">
+                <div class="project-card-head">
+                  <strong class="project-card-name">${escapeHtml(project.name)}</strong>
                   ${statusPill(project.status)}
                 </div>
-                <p>${escapeHtml(project.description)}</p>
-                <div class="record-meta">
-                  <span>${formatDate(project.startDate)} – ${formatDate(project.endDate)}</span>
-                  <span>${positions.length} posicao(oes)</span>
+                ${project.description ? `<p class="project-card-desc">${escapeHtml(project.description)}</p>` : ""}
+                <div class="project-card-stats">
+                  <div class="project-stat">
+                    <span class="project-stat-value">${positions.length}</span>
+                    <span class="project-stat-label">posições</span>
+                  </div>
+                  <div class="project-stat">
+                    <span class="project-stat-value">${roles.length}</span>
+                    <span class="project-stat-label">roles</span>
+                  </div>
+                  ${alertCount ? `
+                  <div class="project-stat project-stat--alert">
+                    <span class="project-stat-value">${alertCount}</span>
+                    <span class="project-stat-label">alertas</span>
+                  </div>` : ""}
                 </div>
-                ${totalLine ? `<div class="record-cost-total">Custo acumulado: <strong>${escapeHtml(totalLine)}</strong></div>` : ""}
-                <div class="record-actions">
-                  <button class="ghost-button compact" type="button" data-project-positions="${escapeAttr(project.id)}">Ver posicoes</button>
-                  <button class="ghost-button compact" type="button" data-project-edit="${escapeAttr(project.id)}">Editar</button>
+                <div class="project-card-footer">
+                  <div class="project-card-meta">
+                    <span>${formatDate(project.startDate)} – ${formatDate(project.endDate)}</span>
+                    ${totalLine ? `<span class="project-card-cost">${escapeHtml(totalLine)}</span>` : ""}
+                  </div>
+                  <div class="project-card-actions">
+                    <button class="ghost-button compact" type="button" data-project-edit="${escapeAttr(project.id)}">Editar</button>
+                    <button class="primary-button compact" type="button" data-project-open="${escapeAttr(project.id)}">Abrir →</button>
+                  </div>
                 </div>
               </article>
             `;
@@ -691,6 +708,200 @@
         </div>
       </section>
     `;
+  }
+
+  function renderProjectDetail(project) {
+    const tab = state.projectDetailTab;
+    const positions = state.data.positions.filter((p) => p.projectId === project.id);
+    const roles = (state.data.projectRoles || []).filter((r) => r.projectId === project.id);
+    const projectAlerts = getAlerts().filter((a) => a.projectId === project.id);
+    const totals = projectCostTotals(positions, project);
+    const totalLine = totals.size
+      ? [...totals.entries()].map(([cur, val]) => formatCurrency(val, cur)).join(" + ")
+      : null;
+
+    return `
+      <div class="project-detail">
+        <div class="project-detail-header">
+          <div class="project-detail-utility">
+            <button class="ghost-button compact" type="button" data-project-back>← Projetos</button>
+            <button class="ghost-button compact" type="button" data-project-edit="${escapeAttr(project.id)}">Editar projeto</button>
+          </div>
+
+          <div class="project-detail-title">
+            <h2>${escapeHtml(project.name)}</h2>
+            ${statusPill(project.status)}
+          </div>
+          ${project.description ? `<p class="project-detail-desc">${escapeHtml(project.description)}</p>` : ""}
+          <div class="project-detail-meta">
+            <span>${formatDate(project.startDate)} – ${formatDate(project.endDate)}</span>
+            ${totalLine ? `<span class="record-cost-total">Custo acumulado: <strong>${escapeHtml(totalLine)}</strong></span>` : ""}
+          </div>
+
+          <div class="project-detail-stats">
+            <div class="project-stat">
+              <span class="project-stat-value">${positions.length}</span>
+              <span class="project-stat-label">Posicoes</span>
+            </div>
+            <div class="project-stat">
+              <span class="project-stat-value">${roles.length}</span>
+              <span class="project-stat-label">Roles</span>
+            </div>
+            <div class="project-stat${projectAlerts.length ? " project-stat--alert" : ""}">
+              <span class="project-stat-value">${projectAlerts.length}</span>
+              <span class="project-stat-label">Alertas</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="project-detail-tabs">
+          <button class="tab-button${tab === "positions" ? " active" : ""}" type="button" data-project-detail-tab="positions">
+            Posicoes <span class="tab-count">${positions.length}</span>
+          </button>
+          <button class="tab-button${tab === "roles" ? " active" : ""}" type="button" data-project-detail-tab="roles">
+            Roles <span class="tab-count">${roles.length}</span>
+          </button>
+          <button class="tab-button${tab === "alerts" ? " active" : ""}" type="button" data-project-detail-tab="alerts">
+            Alertas ${projectAlerts.length ? `<span class="tab-count alert">${projectAlerts.length}</span>` : `<span class="tab-count">0</span>`}
+          </button>
+        </div>
+
+        <div class="project-detail-body">
+          ${tab === "positions" ? renderProjectDetailPositions(project, positions) : ""}
+          ${tab === "roles" ? renderProjectDetailRoles(project, roles) : ""}
+          ${tab === "alerts" ? renderProjectDetailAlerts(project, projectAlerts) : ""}
+        </div>
+      </div>
+    `;
+  }
+
+  function renderProjectDetailPositions(project, positions) {
+    const totals = projectCostTotals(positions, project);
+    const totalLine = totals.size
+      ? [...totals.entries()].map(([cur, val]) => formatCurrency(val, cur)).join(" + ")
+      : null;
+
+    return `
+      <div class="panel-header" style="padding: 0 0 16px 0">
+        <div></div>
+        <div class="toolbar">
+          <button class="primary-button compact" type="button" data-position-new>Nova posicao</button>
+        </div>
+      </div>
+      ${positions.length ? `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Posicao</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Alocacao / Candidato</th>
+              <th class="num-col">Custo acumulado</th>
+              <th style="width:64px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${positions.map((pos) => {
+              const info = positionFillInfo(pos, project);
+              const roleCell = pos.externalRoleId
+                ? `<span class="mono-text">${escapeHtml(pos.externalRoleId)}</span>`
+                : `<span class="muted">—</span>`;
+              let candidateCell;
+              if (!info.filled) {
+                candidateCell = `<span class="muted">Sem candidatura</span>`;
+              } else if (info.roleMatch) {
+                candidateCell = `<strong>${escapeHtml(info.candidate.name)}</strong><span class="status-pill confirmed">Reservado</span>`;
+              } else {
+                candidateCell = `<strong>${escapeHtml(info.candidate.name)}</strong><span class="status-pill in-process">${escapeHtml(labels[info.application.status] || info.application.status)}</span>`;
+              }
+              const costCell = info.cost
+                ? `<strong>${formatCurrency(info.cost.value, info.cost.currency)}</strong>`
+                : `<span class="muted">—</span>`;
+              return `
+                <tr>
+                  <td><strong>${escapeHtml(pos.name)}</strong></td>
+                  <td>${roleCell}</td>
+                  <td>${statusPill(pos.status)}</td>
+                  <td>${candidateCell}</td>
+                  <td class="num-col">${costCell}</td>
+                  <td><button class="ghost-button compact" type="button" data-position-edit="${escapeAttr(pos.id)}">Editar</button></td>
+                </tr>
+              `;
+            }).join("")}
+          </tbody>
+          ${totalLine ? `
+            <tfoot>
+              <tr>
+                <td colspan="5" style="text-align:right; font-weight:700;">Total acumulado</td>
+                <td><strong>${escapeHtml(totalLine)}</strong></td>
+                <td></td>
+              </tr>
+            </tfoot>
+          ` : ""}
+        </table>
+      ` : emptyState("Nenhuma posicao cadastrada neste projeto.")}
+    `;
+  }
+
+  function renderProjectDetailRoles(project, roles) {
+    const today = todayIso();
+    const calendars = state.data.allocationCalendars || [];
+
+    return `
+      <div class="panel-header" style="padding: 0 0 16px 0">
+        <div></div>
+        <div class="toolbar">
+          <button class="ghost-button compact" type="button" data-project-role-new="${escapeAttr(project.id)}">+ Adicionar role</button>
+        </div>
+      </div>
+      ${roles.length ? `
+        <table class="data-table">
+          <thead>
+            <tr>
+              <th>Numero da Role</th>
+              <th>Alocado</th>
+              <th>Status</th>
+              <th>Periodo</th>
+              <th style="width:48px"></th>
+            </tr>
+          </thead>
+          <tbody>
+            ${roles.map((r) => {
+              const allocs = calendars.filter((cal) =>
+                cal.roleIdExternal === r.roleNumber &&
+                cal.calendarStartDate && cal.calendarEndDate &&
+                cal.calendarStartDate <= today && cal.calendarEndDate >= today
+              );
+              if (!allocs.length) {
+                return `
+                  <tr>
+                    <td><code>${escapeHtml(r.roleNumber)}</code></td>
+                    <td class="muted-cell" colspan="2">Sem alocacao vigente</td>
+                    <td></td>
+                    <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>
+                  </tr>
+                `;
+              }
+              return allocs.map((cal, i) => `
+                <tr>
+                  ${i === 0 ? `<td rowspan="${allocs.length}"><code>${escapeHtml(r.roleNumber)}</code></td>` : ""}
+                  <td>${escapeHtml(cal.employeeName || "—")}</td>
+                  <td>${escapeHtml(cal.candidateStatus || "—")}</td>
+                  <td class="muted-cell" style="white-space:nowrap;font-size:12px">${formatDate(cal.calendarStartDate)} – ${formatDate(cal.calendarEndDate)}</td>
+                  ${i === 0 ? `<td rowspan="${allocs.length}"><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>` : ""}
+                </tr>
+              `).join("");
+            }).join("")}
+          </tbody>
+        </table>
+      ` : emptyState("Nenhuma role cadastrada para este projeto.")}
+    `;
+  }
+
+  function renderProjectDetailAlerts(project, alerts) {
+    return alerts.length
+      ? `<div class="alert-list">${alerts.map(alertCard).join("")}</div>`
+      : emptyState("Nenhum alerta para este projeto.");
   }
 
   function renderPositions() {
@@ -877,7 +1088,8 @@
       externalPersonId: person.corporateId || corporateIdFromEmail(person.email),
       name: displayNameFromImportedPerson(person.name),
       email: person.email || "",
-      costAmount: 0,
+      ucrAmount: 0,
+      lcrAmount: 0,
       costCurrency: "BRL",
       costPeriod: "MONTH",
       active: true,
@@ -1603,7 +1815,7 @@
           <strong>${candidate.name}</strong>
           ${alerts.length ? `<span class="alert-count">${alerts.length}</span>` : ""}
         </div>
-        <p>${position.name}</p>
+        <p>${position.name}${position.externalRoleId ? ` <code class="role-tag">${escapeHtml(position.externalRoleId)}</code>` : ""}</p>
         <small>${project.name}</small>
         ${statusPill(app.status)}
         <div class="kanban-card-footer">
@@ -2008,7 +2220,8 @@
               <th>Empresa</th>
               <th>Status</th>
               <th>Staffable</th>
-              <th>Custo</th>
+              <th>UCR</th>
+              <th>LCR</th>
               <th>Candidaturas</th>
               <th>Acoes</th>
             </tr>
@@ -2024,12 +2237,13 @@
                   <td>${company ? company.name : "<span class=\"warning-text\">Empresa nao informada</span>"}</td>
                   <td>${statusPill(candidate.active ? "ACTIVE" : "CLOSED")}</td>
                   <td><span class="availability-chip${availability.available ? " availability-chip--free" : ""}">${escapeHtml(availability.label)}</span></td>
-                  <td>${formatMoney(candidate.costAmount, candidate.costCurrency)}<span>${periodLabel(candidate.costPeriod)}</span></td>
+                  <td class="num-col">${candidate.ucrAmount ? `${formatMoney(candidate.ucrAmount, candidate.costCurrency)}<span>${periodLabel(candidate.costPeriod)}</span>` : `<span class="muted">—</span>`}</td>
+                  <td class="num-col">${candidate.lcrAmount ? `${formatMoney(candidate.lcrAmount, candidate.costCurrency)}<span>${periodLabel(candidate.costPeriod)}</span>` : `<span class="muted">—</span>`}</td>
                   <td>${apps.length}</td>
                   <td><button class="ghost-button compact" type="button" data-candidate-edit="${candidate.id}">Editar</button></td>
                 </tr>
               `;
-            }).join("") || tableEmpty(7, "Nenhum candidato encontrado.")}
+            }).join("") || tableEmpty(8, "Nenhum candidato encontrado.")}
           </tbody>
         </table>
       </div>
@@ -2807,7 +3021,8 @@
       ExternalPersonId: candidate.externalPersonId || "",
       Name: candidate.name,
       Email: candidate.email || "",
-      CostAmount: candidate.costAmount,
+      UcrAmount: candidate.ucrAmount ?? 0,
+      LcrAmount: candidate.lcrAmount ?? 0,
       CostCurrency: candidate.costCurrency,
       CostPeriod: candidate.costPeriod,
       Active: candidate.active ? "TRUE" : "FALSE",
@@ -2886,7 +3101,8 @@
       const externalPersonId = cleanCell(row.externalpersonid);
       const name = cleanCell(row.name);
       const email = cleanCell(row.email);
-      const costAmount = parseNumberCell(row.costamount);
+      const ucrAmount = parseNumberCell(row.ucramount);
+      const lcrAmount = parseNumberCell(row.lcramount);
       const costCurrency = cleanCell(row.costcurrency).toUpperCase() || "BRL";
       const costPeriod = cleanCell(row.costperiod).toUpperCase() || "MONTH";
       const active = parseBooleanCell(row.active, existingCandidate ? existingCandidate.active : true);
@@ -2895,7 +3111,8 @@
 
       if (!name) errors.push(`Linha ${rowNumber}: Name e obrigatorio.`);
       if (email && !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) errors.push(`Linha ${rowNumber}: Email invalido.`);
-      if (costAmount === null || costAmount < 0) errors.push(`Linha ${rowNumber}: CostAmount deve ser um numero maior ou igual a zero.`);
+      if (ucrAmount !== null && ucrAmount < 0) errors.push(`Linha ${rowNumber}: UcrAmount deve ser um numero maior ou igual a zero.`);
+      if (lcrAmount !== null && lcrAmount < 0) errors.push(`Linha ${rowNumber}: LcrAmount deve ser um numero maior ou igual a zero.`);
       if (!validCurrencies.has(costCurrency)) errors.push(`Linha ${rowNumber}: CostCurrency deve ser BRL, USD, EUR ou GBP.`);
       if (!validPeriods.has(costPeriod)) errors.push(`Linha ${rowNumber}: CostPeriod deve ser HOUR, DAY ou MONTH.`);
       if (active === null) errors.push(`Linha ${rowNumber}: Active deve ser TRUE ou FALSE.`);
@@ -2932,7 +3149,8 @@
         externalPersonId,
         name,
         email,
-        costAmount: costAmount ?? 0,
+        ucrAmount: ucrAmount ?? 0,
+        lcrAmount: lcrAmount ?? 0,
         costCurrency,
         costPeriod,
         active: active ?? true,
@@ -3082,6 +3300,11 @@
       onProgress("Lendo arquivo...");
       await yieldToUI();
       const rows = await window.staffingExcel.readFirstTabularSheet(file);
+
+      if (!rows.length) {
+        toast("O arquivo foi lido mas nao contém linhas de dados. Verifique se a aba correta contém o relatorio de pessoas.");
+        return;
+      }
 
       onProgress(`Processando ${rows.length} linha(s)...`);
       await yieldToUI();
@@ -3237,6 +3460,11 @@
       onProgress("Lendo arquivo...");
       await yieldToUI();
       const rows = await window.staffingExcel.readFirstTabularSheet(file);
+
+      if (!rows.length) {
+        toast("O arquivo foi lido mas nao contém linhas de dados. Verifique se a aba correta contém o calendario.");
+        return;
+      }
 
       onProgress(`Processando ${rows.length} linha(s)...`);
       await yieldToUI();
@@ -3617,7 +3845,8 @@
       externalPersonId: "",
       name: "",
       email: "",
-      costAmount: 0,
+      ucrAmount: 0,
+      lcrAmount: 0,
       costCurrency: "BRL",
       costPeriod: "MONTH",
       active: true,
@@ -3678,12 +3907,17 @@
           <details class="collapsible-section">
             <summary>
               <span>Custo</span>
-              <small>${values.costAmount ? `${escapeHtml(String(values.costAmount))} ${escapeHtml(values.costCurrency)} / ${escapeHtml(periodLabel(values.costPeriod))}` : "Nao definido"}</small>
+              <small>${values.ucrAmount || values.lcrAmount ? `UCR ${escapeHtml(String(values.ucrAmount))} · LCR ${escapeHtml(String(values.lcrAmount))} ${escapeHtml(values.costCurrency)} / ${escapeHtml(periodLabel(values.costPeriod))}` : "Nao definido"}</small>
             </summary>
             <div class="form-grid">
               <label>
-                <span>Custo</span>
-                <input name="costAmount" type="number" min="0" step="0.01" value="${escapeAttr(values.costAmount)}">
+                <span>UCR (Unloaded Cost Rate)</span>
+                <input name="ucrAmount" type="number" min="0" step="0.01" value="${escapeAttr(values.ucrAmount)}">
+              </label>
+
+              <label>
+                <span>LCR (Loaded Cost Rate)</span>
+                <input name="lcrAmount" type="number" min="0" step="0.01" value="${escapeAttr(values.lcrAmount)}">
               </label>
 
               <label>
@@ -3911,7 +4145,8 @@
       externalPersonId: String(formData.get("externalPersonId")).trim(),
       name: String(formData.get("name")).trim(),
       email: String(formData.get("email")).trim(),
-      costAmount: Number(formData.get("costAmount")),
+      ucrAmount: Number(formData.get("ucrAmount")),
+      lcrAmount: Number(formData.get("lcrAmount")),
       costCurrency: String(formData.get("costCurrency")),
       costPeriod: String(formData.get("costPeriod")),
       active: formData.get("active") === "on",
@@ -3924,8 +4159,12 @@
       return;
     }
 
-    if (!Number.isFinite(candidate.costAmount) || candidate.costAmount < 0) {
-      toast("Informe um custo valido.");
+    if (!Number.isFinite(candidate.ucrAmount) || candidate.ucrAmount < 0) {
+      toast("Informe um UCR valido.");
+      return;
+    }
+    if (!Number.isFinite(candidate.lcrAmount) || candidate.lcrAmount < 0) {
+      toast("Informe um LCR valido.");
       return;
     }
 
@@ -5158,7 +5397,7 @@
   }
 
   function calcDailyCost(candidate) {
-    const amount = Number(candidate.costAmount) || 0;
+    const amount = Number(candidate.lcrAmount) > 0 ? Number(candidate.lcrAmount) : Number(candidate.ucrAmount) || 0;
     if (!amount || !candidate.costPeriod) return 0;
     if (candidate.costPeriod === "MONTH") return amount / 30;
     if (candidate.costPeriod === "DAY")   return amount;
@@ -5231,7 +5470,7 @@
     el.toast.textContent = message;
     el.toast.classList.add("visible");
     window.clearTimeout(toast.timer);
-    toast.timer = window.setTimeout(() => el.toast.classList.remove("visible"), 2600);
+    toast.timer = window.setTimeout(() => el.toast.classList.remove("visible"), 6000);
   }
 
   init();

@@ -19,9 +19,9 @@
 
   function checkEncrypted(error) {
     const msg = error && error.message ? error.message : String(error);
-    if (msg.includes("Encrypt") || msg.includes("encrypt") || msg.includes("ECMA-376") || msg.includes("password")) {
+    if (msg.includes("ECMA-376") || msg.includes("EncryptionInfo")) {
       throw new Error(
-        "O arquivo esta protegido por senha. Abra-o no Excel, va em Arquivo > Informacoes > Proteger Pasta de Trabalho > Criptografar com Senha e remova a senha antes de importar."
+        "O arquivo esta protegido por senha (ECMA-376). Abra-o no Excel, va em Arquivo > Informacoes > Proteger Pasta de Trabalho > Criptografar com Senha e remova a senha antes de importar."
       );
     }
     throw error;
@@ -61,8 +61,10 @@
       defval: "",
       raw: false
     });
-    const headerIndex = matrix.findIndex((row) => row.filter((cell) => String(cell).trim()).length >= 5);
-    if (headerIndex < 0) return [];
+    const headerIndex = matrix.findIndex((row) => row.filter((cell) => String(cell).trim()).length >= 2);
+    if (headerIndex < 0) throw new Error(
+      `Nenhuma linha de cabecalho encontrada na aba "${firstSheetName}". O arquivo pode estar vazio ou ter um formato inesperado.`
+    );
     const headers = matrix[headerIndex].map((cell) => String(cell).trim());
 
     // Build hyperlink overlay: cells with Excel hyperlinks store the URL in cell.l.Target,
