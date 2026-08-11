@@ -990,6 +990,17 @@ tbody tr:hover td {
   max-width: 120px;
   overflow: hidden;
   text-overflow: ellipsis;
+  border: none;
+  font-family: inherit;
+}
+
+.kanban-chip--link {
+  cursor: pointer;
+}
+
+.kanban-chip--link:hover {
+  background: rgba(161, 0, 255, 0.08);
+  color: var(--accent);
 }
 
 .kanban-card-actions {

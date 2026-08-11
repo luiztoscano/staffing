@@ -1653,6 +1653,7 @@
         <div class="kanban-divider"></div>
         <div class="kanban-card-chips">
           <span class="kanban-chip" title="${escapeAttr(project.name)}">${escapeHtml(project.name)}</span>
+          <button class="kanban-chip kanban-chip--link" type="button" data-position-goto="${escapeAttr(position.id)}" title="${escapeAttr(position.name)}">${escapeHtml(position.name)}</button>
           ${position.externalRoleId ? `<span class="kanban-chip">${escapeHtml(position.externalRoleId)}</span>` : ""}
           ${statusPill(app.status)}
         </div>
