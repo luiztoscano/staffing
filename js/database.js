@@ -69,10 +69,7 @@
 
     CREATE TABLE IF NOT EXISTS project_role (
       project_role_id TEXT PRIMARY KEY,
-      project_id TEXT NOT NULL,
-      role_number TEXT NOT NULL,
-      UNIQUE (project_id, role_number),
-      FOREIGN KEY (project_id) REFERENCES project(project_id) ON UPDATE CASCADE ON DELETE CASCADE
+      role_number TEXT NOT NULL UNIQUE
     );
 
     CREATE TABLE IF NOT EXISTS candidate (
@@ -321,6 +318,19 @@
      ALTER TABLE application_history RENAME TO _application_history_old;
      ALTER TABLE _application_history_repair RENAME TO application_history;
      DROP TABLE IF EXISTS _application_history_old;
+     PRAGMA legacy_alter_table=OFF;
+     PRAGMA foreign_keys=ON`,
+    `PRAGMA foreign_keys=OFF;
+     PRAGMA legacy_alter_table=ON;
+     CREATE TABLE IF NOT EXISTS _project_role_new (
+       project_role_id TEXT PRIMARY KEY,
+       role_number TEXT NOT NULL UNIQUE
+     );
+     INSERT OR IGNORE INTO _project_role_new (project_role_id, role_number) SELECT project_role_id, role_number FROM project_role;
+     DROP TABLE IF EXISTS _project_role_old;
+     ALTER TABLE project_role RENAME TO _project_role_old;
+     ALTER TABLE _project_role_new RENAME TO project_role;
+     DROP TABLE IF EXISTS _project_role_old;
      PRAGMA legacy_alter_table=OFF;
      PRAGMA foreign_keys=ON`
   ];
@@ -946,12 +956,11 @@
   async function saveProjectRole(projectRole) {
     if (!db) await createEmpty();
     run(
-      `INSERT INTO project_role (project_role_id, project_id, role_number)
-       VALUES (?, ?, ?)
+      `INSERT INTO project_role (project_role_id, role_number)
+       VALUES (?, ?)
        ON CONFLICT(project_role_id) DO UPDATE SET
-         project_id = excluded.project_id,
          role_number = excluded.role_number`,
-      [projectRole.id, projectRole.projectId, projectRole.roleNumber]
+      [projectRole.id, projectRole.roleNumber]
     );
     db.run("PRAGMA optimize;");
     return readAll();
@@ -970,12 +979,11 @@
     try {
       projectRoles.forEach((projectRole) => {
         run(
-          `INSERT INTO project_role (project_role_id, project_id, role_number)
-           VALUES (?, ?, ?)
+          `INSERT INTO project_role (project_role_id, role_number)
+           VALUES (?, ?)
            ON CONFLICT(project_role_id) DO UPDATE SET
-             project_id = excluded.project_id,
              role_number = excluded.role_number`,
-          [projectRole.id, projectRole.projectId, projectRole.roleNumber]
+          [projectRole.id, projectRole.roleNumber]
         );
       });
 
@@ -1297,7 +1305,7 @@
 
     return {
       projects: rows("SELECT project_id AS id, name, description, start_date AS startDate, end_date AS endDate, status FROM project ORDER BY name"),
-      projectRoles: rows("SELECT project_role_id AS id, project_id AS projectId, role_number AS roleNumber FROM project_role ORDER BY project_id, role_number"),
+      projectRoles: rows("SELECT project_role_id AS id, role_number AS roleNumber FROM project_role ORDER BY role_number"),
       skills: rows("SELECT skill_id AS id, name, active FROM skill ORDER BY name").map((item) => ({ ...item, active: Boolean(item.active) })),
       companies: rows("SELECT company_id AS id, name, kind, active FROM company ORDER BY name").map((item) => ({ ...item, active: Boolean(item.active) })),
       positions: rows("SELECT position_id AS id, project_id AS projectId, external_role_id AS externalRoleId, name, description, start_date AS startDate, end_date AS endDate, status FROM position ORDER BY name")

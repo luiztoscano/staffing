@@ -631,17 +631,14 @@
   function renderDashboard() {
     const activeProjects = state.data.projects.filter((p) => p.status === "ACTIVE").length;
     const activePositions = state.data.positions.filter((p) => !["CANCELLED", "CLOSED"].includes(p.status)).length;
-    const activeRoles = (state.data.projectRoles || []).filter((r) => {
-      const project = byId("projects", r.projectId);
-      return project && project.status === "ACTIVE";
-    }).length;
+    const activeRoles = (state.data.projectRoles || []).length;
     const activeApplications = state.data.applications.filter((a) => a.status !== "REJECTED" && a.status !== "CANCELLED").length;
 
     return `
       <section class="metric-grid">
         ${metricCard("Projetos ativos", activeProjects, "Projetos com status Ativo")}
         ${metricCard("Posicoes ativas", activePositions, "Posicoes nao canceladas ou encerradas")}
-        ${metricCard("Roles ativas", activeRoles, "Roles de projetos ativos")}
+        ${metricCard("Roles no pool", activeRoles, "Roles cadastradas no pool")}
         ${metricCard("Candidaturas ativas", activeApplications, "Candidaturas em andamento")}
       </section>
     `;
@@ -664,7 +661,10 @@
         <div class="card-grid">
           ${projects.map((project) => {
             const positions = state.data.positions.filter((p) => p.projectId === project.id);
-            const roles = (state.data.projectRoles || []).filter((r) => r.projectId === project.id);
+            const roles = state.data.positions
+              .filter((p) => p.projectId === project.id && p.externalRoleId)
+              .map((p) => p.externalRoleId);
+            const uniqueRoles = [...new Set(roles)];
             const alertCount = allAlerts.filter((a) => a.projectId === project.id).length;
             const totals = projectCostTotals(positions, project);
             const totalLine = totals.size
@@ -684,7 +684,7 @@
                     <span class="project-stat-label">posições</span>
                   </div>
                   <div class="project-stat">
-                    <span class="project-stat-value">${roles.length}</span>
+                    <span class="project-stat-value">${uniqueRoles.length}</span>
                     <span class="project-stat-label">roles</span>
                   </div>
                   ${alertCount ? `
@@ -715,8 +715,15 @@
     const calendars = state.data.allocationCalendars || [];
     const demandByRoleId = new Map((state.data.demandRoles || []).map((dr) => [dr.roleIdExternal, dr]));
 
+    const roleToProjectIds = new Map();
+    state.data.positions.forEach((position) => {
+      if (position.externalRoleId) {
+        if (!roleToProjectIds.has(position.externalRoleId)) roleToProjectIds.set(position.externalRoleId, new Set());
+        roleToProjectIds.get(position.externalRoleId).add(position.projectId);
+      }
+    });
+
     return (projectRoles || []).map((r) => {
-      const project = byId("projects", r.projectId);
       const dr = demandByRoleId.get(r.roleNumber) || {};
       const allocations = calendars
         .filter((cal) =>
@@ -726,11 +733,14 @@
         )
         .map((cal) => ({ name: cal.employeeName || "—", status: cal.candidateStatus || "—" }));
 
+      const linkedProjectIds = [...(roleToProjectIds.get(r.roleNumber) || [])];
+      const linkedProjects = linkedProjectIds.map((id) => byId("projects", id)).filter(Boolean);
+
       return {
         id: r.id,
-        projectId: r.projectId,
-        projectName: project ? project.name : "",
         roleNumber: r.roleNumber,
+        linkedProjectIds,
+        linkedProjects,
         client: dr.client || "",
         roleTitle: dr.roleTitle || "",
         roleStatus: dr.roleStatus || "",
@@ -750,15 +760,14 @@
     });
   }
 
-  function rolesTable(rows, { showProjectColumn = false } = {}) {
-    const colCount = showProjectColumn ? 8 : 7;
+  function rolesTable(rows) {
     return `
       <div class="table-wrap">
         <table>
           <thead>
             <tr>
               <th>Role</th>
-              ${showProjectColumn ? "<th>Projeto</th>" : ""}
+              <th>Projeto(s)</th>
               <th>Cliente</th>
               <th>Inicio</th>
               <th>Fim</th>
@@ -771,7 +780,9 @@
             ${rows.map((row) => `
               <tr>
                 <td><code>${escapeHtml(row.roleNumber)}</code></td>
-                ${showProjectColumn ? `<td>${escapeHtml(row.projectName)}</td>` : ""}
+                <td>${row.linkedProjects.length
+                  ? row.linkedProjects.map((p) => escapeHtml(p.name)).join(", ")
+                  : `<span class="muted">Sem posicao</span>`}</td>
                 <td>${escapeHtml(row.client || "—")}</td>
                 <td>${row.startDate ? formatDate(row.startDate) : `<span class="muted">—</span>`}</td>
                 <td>${row.endDate ? formatDate(row.endDate) : `<span class="muted">—</span>`}</td>
@@ -779,7 +790,7 @@
                 <td>${allocationSummaryHtml(row.allocations)}</td>
                 <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(row.id)}" title="Excluir">×</button></td>
               </tr>
-            `).join("") || tableEmpty(colCount, "Nenhuma role cadastrada.")}
+            `).join("") || tableEmpty(8, "Nenhuma role cadastrada.")}
           </tbody>
         </table>
       </div>
@@ -827,15 +838,16 @@
 
   function renderProjectRoles() {
     const projects = state.data.projects;
-    const rows = filterItems(projectRoleRows(state.data.projectRoles), ["roleNumber", "roleTitle", "roleStatus", "client", "projectName"])
-      .filter((r) => state.selectedProjectId === "all" || r.projectId === state.selectedProjectId);
+    const allRows = projectRoleRows(state.data.projectRoles);
+    const filteredRows = filterItems(allRows, ["roleNumber", "roleTitle", "roleStatus", "client"])
+      .filter((r) => state.selectedProjectId === "all" || r.linkedProjectIds.includes(state.selectedProjectId));
 
     return `
       <section class="panel">
         <div class="panel-header toolbar-header">
           <div>
-            <span class="eyebrow">Roles de Projeto</span>
-            <h2>Numeros de role por projeto</h2>
+            <span class="eyebrow">Pool de Roles</span>
+            <h2>Roles cadastradas</h2>
           </div>
           <div class="toolbar">
             <select data-project-role-filter aria-label="Filtrar por projeto">
@@ -850,7 +862,7 @@
             <button class="primary-button compact" type="button" data-project-role-new>Novo</button>
           </div>
         </div>
-        ${rolesTable(rows, { showProjectColumn: true })}
+        ${rolesTable(filteredRows)}
       </section>
     `;
   }
@@ -2395,6 +2407,29 @@
       getApplicationAlerts(app).forEach((alert) => alerts.push(alert));
     });
 
+    const roleToProjectIds = new Map();
+    state.data.positions.forEach((position) => {
+      if (position.externalRoleId) {
+        if (!roleToProjectIds.has(position.externalRoleId)) roleToProjectIds.set(position.externalRoleId, new Set());
+        roleToProjectIds.get(position.externalRoleId).add(position.projectId);
+      }
+    });
+    roleToProjectIds.forEach((projectIds, roleNumber) => {
+      if (projectIds.size > 1) {
+        const projectNames = [...projectIds]
+          .map((id) => { const p = byId("projects", id); return p ? p.name : id; })
+          .join(", ");
+        alerts.push({
+          severity: "medium",
+          title: "Role em multiplos projetos",
+          body: `A role ${roleNumber} esta vinculada a posicoes em mais de um projeto: ${projectNames}.`,
+          meta: roleNumber,
+          action: "roles",
+          actionLabel: "Ver pool de roles"
+        });
+      }
+    });
+
     state.data.candidates.forEach((candidate) => {
       if (candidate.active && !candidate.companyId) {
         alerts.push({
@@ -2480,6 +2515,12 @@
     if (action === "candidate") {
       const candidate = byId("candidates", targetId);
       if (candidate) openCandidateForm(candidate);
+      return;
+    }
+
+    if (action === "roles") {
+      state.view = "roles";
+      render();
       return;
     }
   }
@@ -3134,14 +3175,11 @@
       return;
     }
 
-    const projectsById = Object.fromEntries(state.data.projects.map((p) => [p.id, p]));
     const demandByRoleId = new Map((state.data.demandRoles || []).map((dr) => [dr.roleIdExternal, dr]));
     const rows = (state.data.projectRoles || []).map((r) => {
       const dr = demandByRoleId.get(r.roleNumber) || {};
       return {
         Id: r.id,
-        ProjectId: r.projectId,
-        ProjectName: (projectsById[r.projectId] || {}).name || "",
         RoleNumber: r.roleNumber,
         RoleTitle: dr.roleTitle || "",
         Client: dr.client || "",
@@ -3206,35 +3244,28 @@
     let created = 0;
     let updated = 0;
     const existingById = new Map((state.data.projectRoles || []).map((r) => [r.id, r]));
-    const projectIds = new Set(state.data.projects.map((p) => p.id));
-    const demandRoleIds = new Set((state.data.demandRoles || []).map((dr) => dr.roleIdExternal));
-    const existingPairs = new Map((state.data.projectRoles || []).map((r) => [`${r.projectId}::${r.roleNumber}`, r.id]));
+    const existingByRoleNumber = new Map((state.data.projectRoles || []).map((r) => [r.roleNumber, r.id]));
     const seenIds = new Set();
-    const seenPairs = new Map();
+    const seenRoleNumbers = new Set();
 
     rows.forEach((rawRow, index) => {
       const rowNumber = index + 2;
       const row = normalizeRow(rawRow);
       const id = cleanCell(row.id);
-      const projectId = cleanCell(row.projectid);
       const roleNumber = cleanCell(row.rolenumber);
 
       if (id && !existingById.has(id)) errors.push(`Linha ${rowNumber}: Id informado nao existe no banco.`);
       if (id && seenIds.has(id)) errors.push(`Linha ${rowNumber}: Id duplicado no arquivo.`);
-      if (!projectId) errors.push(`Linha ${rowNumber}: ProjectId e obrigatorio.`);
-      if (projectId && !projectIds.has(projectId)) errors.push(`Linha ${rowNumber}: ProjectId nao existe no cadastro de projetos.`);
       if (!roleNumber) errors.push(`Linha ${rowNumber}: RoleNumber e obrigatorio.`);
-      if (roleNumber && !demandRoleIds.has(roleNumber)) errors.push(`Linha ${rowNumber}: RoleNumber informado nao foi importado no relatorio de Demanda (Roles).`);
 
       const finalId = id || createId();
-      const pairKey = `${projectId}::${roleNumber}`;
-      const existingPairId = existingPairs.get(pairKey);
-      if (existingPairId && existingPairId !== finalId) errors.push(`Linha ${rowNumber}: ja existe uma role ${roleNumber} cadastrada para este projeto.`);
-      if (seenPairs.has(pairKey) && seenPairs.get(pairKey) !== finalId) errors.push(`Linha ${rowNumber}: combinacao de ProjectId e RoleNumber duplicada no arquivo.`);
+      const existingRoleId = existingByRoleNumber.get(roleNumber);
+      if (existingRoleId && existingRoleId !== finalId) errors.push(`Linha ${rowNumber}: RoleNumber ${roleNumber} ja existe no pool.`);
+      if (seenRoleNumbers.has(roleNumber)) errors.push(`Linha ${rowNumber}: RoleNumber ${roleNumber} duplicado no arquivo.`);
 
       seenIds.add(finalId);
-      seenPairs.set(pairKey, finalId);
-      projectRoles.push({ id: finalId, projectId, roleNumber });
+      seenRoleNumbers.add(roleNumber);
+      projectRoles.push({ id: finalId, roleNumber });
 
       if (id) updated += 1;
       else created += 1;
@@ -4288,33 +4319,18 @@
   }
 
   function openProjectRoleForm(prefill = {}) {
-    if (!state.data.projects.length) {
-      toast("Cadastre um projeto antes de adicionar roles.");
-      return;
-    }
-
-    const { prefillRole = null, prefillProjectId = null } = prefill;
-    const defaultProjectId = prefillProjectId
-      || (state.selectedProjectId !== "all" ? state.selectedProjectId : state.data.projects[0].id);
+    const { prefillRole = null } = prefill;
 
     openModal(`
       <section class="modal-card" style="max-width:480px">
         <div class="modal-header">
           <div>
-            <span class="eyebrow">Nova role</span>
+            <span class="eyebrow">Pool de Roles</span>
             <h2>Adicionar Role</h2>
           </div>
           <button class="icon-button light" type="button" data-modal-close aria-label="Fechar">×</button>
         </div>
         <form id="projectRoleForm" class="modal-body" autocomplete="off">
-          <div class="form-field">
-            <label class="form-field-label" for="projectRoleProjectId">Projeto</label>
-            <select id="projectRoleProjectId" class="form-input" name="projectId" required>
-              ${state.data.projects.map((p) => `
-                <option value="${escapeAttr(p.id)}" ${p.id === defaultProjectId ? "selected" : ""}>${escapeHtml(p.name)}</option>
-              `).join("")}
-            </select>
-          </div>
           <div class="form-field">
             <label class="form-field-label" for="roleNumber">Numero da Role</label>
             <input id="roleNumber" class="form-input" name="roleNumber"
@@ -4346,10 +4362,9 @@
     document.getElementById("projectRoleForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
-      const projectId = String(formData.get("projectId") || "").trim();
       const roleNumber = String(formData.get("roleNumber") || "").trim();
-      if (!roleNumber || !projectId) return;
-      const projectRole = { id: createId(), projectId, roleNumber };
+      if (!roleNumber) return;
+      const projectRole = { id: createId(), roleNumber };
       try {
         if (window.staffingDatabase) {
           state.data = await window.staffingDatabase.saveProjectRole(projectRole);
@@ -4361,7 +4376,7 @@
         updateDbStatus("Banco alterado nao salvo");
         closeModal();
         render();
-        toast("Role adicionada.");
+        toast("Role adicionada ao pool.");
       } catch (err) {
         const msg = err && err.message ? err.message : String(err);
         toast(`Nao foi possivel salvar a role: ${msg}`);
@@ -4571,10 +4586,10 @@
               </label>
 
               <label class="span-2">
-                <span>Role do projeto</span>
+                <span>Role do pool</span>
                 <select name="externalRoleId" id="positionRoleSelect">
                   <option value="">— Nenhuma —</option>
-                  ${(state.data.projectRoles || []).filter((r) => r.projectId === values.projectId).map((r) => `
+                  ${(state.data.projectRoles || []).map((r) => `
                     <option value="${escapeAttr(r.roleNumber)}" ${values.externalRoleId === r.roleNumber ? "selected" : ""}>${escapeHtml(r.roleNumber)}</option>
                   `).join("")}
                 </select>
@@ -4642,14 +4657,6 @@
     renderPositionFormSkills(form);
     form.addEventListener("submit", savePositionFromForm);
 
-    form.querySelector("[name='projectId']").addEventListener("change", (e) => {
-      const roleSelect = form.querySelector("#positionRoleSelect");
-      if (!roleSelect) return;
-      const projectId = e.target.value;
-      const projectRoles = (state.data.projectRoles || []).filter((r) => r.projectId === projectId);
-      roleSelect.innerHTML = `<option value="">— Nenhuma —</option>` +
-        projectRoles.map((r) => `<option value="${escapeAttr(r.roleNumber)}">${escapeHtml(r.roleNumber)}</option>`).join("");
-    });
     form.querySelector("[data-position-form-skill-add]").addEventListener("click", () => addPositionFormSkill(form));
     form.addEventListener("click", (event) => {
       const removeSkill = event.target.closest("[data-remove-position-form-skill]");
