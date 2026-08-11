@@ -723,6 +723,8 @@
         candidatesConfirming: dr.candidatesConfirming,
         candidatesFilled: dr.candidatesFilled,
         candidatesNotSelected: dr.candidatesNotSelected,
+        startDate: dr.startDate || "",
+        endDate: dr.endDate || "",
         joinerName: dr.joinerName,
         contractorName: dr.contractorName,
         allocations
@@ -731,7 +733,7 @@
   }
 
   function rolesTable(rows, { showProjectColumn = false } = {}) {
-    const colCount = showProjectColumn ? 6 : 5;
+    const colCount = showProjectColumn ? 8 : 7;
     return `
       <div class="table-wrap">
         <table>
@@ -740,6 +742,8 @@
               <th>Role</th>
               ${showProjectColumn ? "<th>Projeto</th>" : ""}
               <th>Cliente</th>
+              <th>Inicio</th>
+              <th>Fim</th>
               <th>Status</th>
               <th>Alocado</th>
               <th style="width:48px"></th>
@@ -751,6 +755,8 @@
                 <td><code>${escapeHtml(row.roleNumber)}</code></td>
                 ${showProjectColumn ? `<td>${escapeHtml(row.projectName)}</td>` : ""}
                 <td>${escapeHtml(row.client || "—")}</td>
+                <td>${row.startDate ? formatDate(row.startDate) : `<span class="muted">—</span>`}</td>
+                <td>${row.endDate ? formatDate(row.endDate) : `<span class="muted">—</span>`}</td>
                 <td>${demandRoleInfoHtml(row) || `<span class="muted">—</span>`}</td>
                 <td>${allocationSummaryHtml(row.allocations)}</td>
                 <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(row.id)}" title="Excluir">×</button></td>
