@@ -106,7 +106,7 @@
     { id: "positions", label: "Posicoes", icon: "□", title: "Posicoes", eyebrow: "Vagas do staffing" },
     { id: "candidates", label: "Candidatos", icon: "○", title: "Candidatos", eyebrow: "Pessoas e custos" },
     { id: "companies", label: "Empresas", icon: "▣", title: "Empresas", eyebrow: "Cadastro" },
-    { id: "pipeline", label: "Pipeline", icon: "→", title: "Pipeline", eyebrow: "Candidaturas" },
+    { id: "pipeline", label: "Candidaturas", icon: "→", title: "Candidaturas", eyebrow: "" },
     { id: "calendar", label: "Calendario", icon: "◷", title: "Calendario", eyebrow: "Datas importantes" },
     { id: "import", label: "Importacao", icon: "⇅", title: "Importacao", eyebrow: "Carga externa" },
     { id: "skills", label: "Skills", icon: "✦", title: "Skills", eyebrow: "Catalogo" },
@@ -244,6 +244,7 @@
     const view = views.find((item) => item.id === state.view);
     el.title.textContent = view.title;
     el.eyebrow.textContent = view.eyebrow;
+    el.eyebrow.style.display = view.eyebrow ? "" : "none";
 
     const hideTopbarExtras = state.view === "projects";
     el.search.closest(".search-box").style.display = hideTopbarExtras ? "none" : "";
@@ -1532,12 +1533,16 @@
 
   function renderPipeline() {
     const applications = filterApplications();
+    const positionCount = state.data.positions.filter((p) =>
+      state.selectedProjectId === "all" || p.projectId === state.selectedProjectId
+    ).length;
+    const positionLabel = positionCount === 1 ? "1 posicao" : `${positionCount} posicoes`;
     return `
       <section class="panel">
         <div class="panel-header toolbar-header">
           <div>
-            <span class="eyebrow">Candidaturas</span>
-            <h2>Pipeline operacional</h2>
+            <h2>Pipeline</h2>
+            <span class="panel-subtitle">${positionLabel}</span>
           </div>
           <div class="toolbar">
             <select data-project-filter aria-label="Filtrar pipeline por projeto">

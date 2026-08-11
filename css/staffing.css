@@ -196,6 +196,14 @@ button {
   text-transform: uppercase;
 }
 
+.panel-subtitle {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  margin-top: 2px;
+}
+
 .topbar-actions {
   display: flex;
   align-items: center;

@@ -282,6 +282,7 @@
     "ALTER TABLE candidate ADD COLUMN lcr_amount NUMERIC NOT NULL DEFAULT 0 CHECK (lcr_amount >= 0)",
     "UPDATE candidate SET ucr_amount = cost_amount WHERE ucr_amount = 0 AND cost_amount > 0",
     `PRAGMA foreign_keys=OFF;
+     PRAGMA legacy_alter_table=ON;
      CREATE TABLE IF NOT EXISTS _application_new (
        application_id TEXT PRIMARY KEY,
        position_id TEXT NOT NULL,
@@ -301,6 +302,26 @@
      CREATE UNIQUE INDEX IF NOT EXISTS ux_application_one_confirmed_per_position ON application(position_id) WHERE status = 'CONFIRMED';
      CREATE INDEX IF NOT EXISTS idx_application_position ON application(position_id);
      CREATE INDEX IF NOT EXISTS idx_application_candidate ON application(candidate_id);
+     PRAGMA legacy_alter_table=OFF;
+     PRAGMA foreign_keys=ON`,
+    `PRAGMA foreign_keys=OFF;
+     PRAGMA legacy_alter_table=ON;
+     CREATE TABLE IF NOT EXISTS _application_history_repair (
+       application_history_id TEXT PRIMARY KEY,
+       application_id TEXT NOT NULL,
+       from_status TEXT,
+       to_status TEXT NOT NULL,
+       changed_at TEXT NOT NULL,
+       changed_by TEXT,
+       notes TEXT,
+       FOREIGN KEY (application_id) REFERENCES application(application_id) ON UPDATE CASCADE ON DELETE CASCADE
+     );
+     INSERT OR IGNORE INTO _application_history_repair SELECT * FROM application_history;
+     DROP TABLE IF EXISTS _application_history_old;
+     ALTER TABLE application_history RENAME TO _application_history_old;
+     ALTER TABLE _application_history_repair RENAME TO application_history;
+     DROP TABLE IF EXISTS _application_history_old;
+     PRAGMA legacy_alter_table=OFF;
      PRAGMA foreign_keys=ON`
   ];
 
