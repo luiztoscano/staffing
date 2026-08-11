@@ -8,6 +8,7 @@
     calendarView: "month",
     calendarSelectedDate: null,
     pipelineView: "kanban",
+    showInactiveRoles: false,
     selectedPositionIds: new Set(),
     data: structuredClone(window.staffingSeed),
     dbMode: "memory"
@@ -495,9 +496,23 @@
       }));
     });
 
+    document.querySelectorAll("[data-project-role-edit]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const role = byId("projectRoles", button.dataset.projectRoleEdit);
+        if (role) openProjectRoleForm({ existingRole: role });
+      });
+    });
+
+    document.querySelectorAll("[data-show-inactive-roles]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        state.showInactiveRoles = cb.checked;
+        render();
+      });
+    });
+
     document.querySelectorAll("[data-project-role-delete]").forEach((button) => {
       button.addEventListener("click", async () => {
-        if (!window.confirm("Excluir esta role do projeto?")) return;
+        if (!window.confirm("Excluir esta role do pool?")) return;
         try {
           if (window.staffingDatabase) {
             state.data = await window.staffingDatabase.deleteProjectRole(button.dataset.projectRoleDelete);
@@ -739,6 +754,7 @@
       return {
         id: r.id,
         roleNumber: r.roleNumber,
+        active: r.active !== false,
         linkedProjectIds,
         linkedProjects,
         client: dr.client || "",
@@ -773,13 +789,13 @@
               <th>Fim</th>
               <th>Status</th>
               <th>Alocado</th>
-              <th style="width:48px"></th>
+              <th style="width:80px"></th>
             </tr>
           </thead>
           <tbody>
             ${rows.map((row) => `
-              <tr>
-                <td><code>${escapeHtml(row.roleNumber)}</code></td>
+              <tr class="${row.active ? "" : "row-inactive"}">
+                <td><code>${escapeHtml(row.roleNumber)}</code>${row.active ? "" : ` <span class="muted" style="font-size:11px">(inativa)</span>`}</td>
                 <td>${row.linkedProjects.length
                   ? row.linkedProjects.map((p) => escapeHtml(p.name)).join(", ")
                   : `<span class="muted">Sem posicao</span>`}</td>
@@ -788,7 +804,10 @@
                 <td>${row.endDate ? formatDate(row.endDate) : `<span class="muted">—</span>`}</td>
                 <td>${demandRoleInfoHtml(row) || `<span class="muted">—</span>`}</td>
                 <td>${allocationSummaryHtml(row.allocations)}</td>
-                <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(row.id)}" title="Excluir">×</button></td>
+                <td style="white-space:nowrap">
+                  <button class="ghost-button compact" type="button" data-project-role-edit="${escapeAttr(row.id)}">Editar</button>
+                  <button class="icon-button" type="button" data-project-role-delete="${escapeAttr(row.id)}" title="Excluir">×</button>
+                </td>
               </tr>
             `).join("") || tableEmpty(8, "Nenhuma role cadastrada.")}
           </tbody>
@@ -840,7 +859,8 @@
     const projects = state.data.projects;
     const allRows = projectRoleRows(state.data.projectRoles);
     const filteredRows = filterItems(allRows, ["roleNumber", "roleTitle", "roleStatus", "client"])
-      .filter((r) => state.selectedProjectId === "all" || r.linkedProjectIds.includes(state.selectedProjectId));
+      .filter((r) => state.selectedProjectId === "all" || r.linkedProjectIds.includes(state.selectedProjectId))
+      .filter((r) => state.showInactiveRoles || r.active);
 
     return `
       <section class="panel">
@@ -850,6 +870,10 @@
             <h2>Roles cadastradas</h2>
           </div>
           <div class="toolbar">
+            <label class="checkbox-label">
+              <input type="checkbox" data-show-inactive-roles ${state.showInactiveRoles ? "checked" : ""}>
+              Mostrar desativadas
+            </label>
             <select data-project-role-filter aria-label="Filtrar por projeto">
               <option value="all"${state.selectedProjectId === "all" ? " selected" : ""}>Todos os projetos</option>
               ${projects.map((p) => `
@@ -4318,26 +4342,99 @@
     }
   }
 
+  function roleFormInfoPanel(dr) {
+    if (!dr) return `
+      <div class="role-form-no-match">
+        <span>Numero nao encontrado na importacao de Demanda — role sera cadastrada manualmente.</span>
+      </div>
+    `;
+
+    const meta = [];
+    if (dr.client) meta.push({ label: "Cliente", value: dr.client });
+    if (dr.projectName && dr.projectName !== dr.client) meta.push({ label: "Projeto", value: dr.projectName });
+    if (dr.startDate || dr.endDate) {
+      const start = dr.startDate ? formatDate(dr.startDate) : "?";
+      const end = dr.endDate ? formatDate(dr.endDate) : "?";
+      meta.push({ label: "Periodo", value: `${start} → ${end}` });
+    }
+
+    const pipelineCounters = [
+      { label: "Identificado", value: dr.candidatesIdentified, cls: "identified" },
+      { label: "Proposto", value: dr.candidatesProposed, cls: "proposed" },
+      { label: "Confirmando", value: dr.candidatesConfirming, cls: "confirming" },
+      { label: "Preenchido", value: dr.candidatesFilled, cls: "filled" },
+    ].filter((c) => c.value && String(c.value) !== "0");
+
+    const assignee = dr.joinerName || dr.contractorName;
+
+    return `
+      <div class="role-form-info-panel">
+        <div class="role-form-info-head">
+          <div class="role-form-info-identity">
+            <code class="role-form-info-id">${escapeHtml(dr.roleIdExternal)}</code>
+            ${dr.roleTitle ? `<span class="role-form-info-title">${escapeHtml(dr.roleTitle)}</span>` : ""}
+          </div>
+          ${dr.roleStatus ? statusPill(dr.roleStatus, dr.roleStatus) : ""}
+        </div>
+        ${meta.length ? `
+          <div class="role-form-info-meta">
+            ${meta.map((m) => `
+              <div class="role-form-info-field">
+                <span class="role-form-info-field-label">${escapeHtml(m.label)}</span>
+                <span class="role-form-info-field-value">${escapeHtml(m.value)}</span>
+              </div>
+            `).join("")}
+          </div>
+        ` : ""}
+        ${pipelineCounters.length ? `
+          <div class="demand-role-pipeline">
+            ${pipelineCounters.map((c) => `<span class="pipeline-chip pipeline-chip--${c.cls}">${escapeHtml(String(c.value))} ${escapeHtml(c.label)}</span>`).join("")}
+          </div>
+        ` : ""}
+        ${assignee ? `<div class="role-form-info-assignee">${escapeHtml(assignee)}</div>` : ""}
+      </div>
+    `;
+  }
+
   function openProjectRoleForm(prefill = {}) {
-    const { prefillRole = null } = prefill;
+    const { prefillRole = null, existingRole = null } = prefill;
+    const isEdit = Boolean(existingRole);
+    const initialRoleNumber = existingRole ? existingRole.roleNumber : (prefillRole ? prefillRole.roleIdExternal : "");
+    const initialActive = existingRole ? existingRole.active !== false : true;
+    const initialDr = initialRoleNumber
+      ? (state.data.demandRoles || []).find((r) => r.roleIdExternal === initialRoleNumber) || null
+      : null;
 
     openModal(`
-      <section class="modal-card" style="max-width:480px">
+      <section class="modal-card role-form-modal">
         <div class="modal-header">
           <div>
             <span class="eyebrow">Pool de Roles</span>
-            <h2>Adicionar Role</h2>
+            <h2>${isEdit ? "Editar Role" : "Adicionar Role"}</h2>
           </div>
           <button class="icon-button light" type="button" data-modal-close aria-label="Fechar">×</button>
         </div>
         <form id="projectRoleForm" class="modal-body" autocomplete="off">
-          <div class="form-field">
-            <label class="form-field-label" for="roleNumber">Numero da Role</label>
-            <input id="roleNumber" class="form-input" name="roleNumber"
-              value="${escapeAttr(prefillRole ? prefillRole.roleIdExternal : "")}"
-              placeholder="Ex: 123456" required autocomplete="off" autofocus>
-            <div id="rolePreview">${prefillRole ? demandRolePreviewHtml(prefillRole) : ""}</div>
+
+          <div class="role-form-number-row">
+            <div class="role-form-number-field">
+              <label class="form-field-label" for="roleNumber">Numero da Role</label>
+              <input id="roleNumber" class="form-input" name="roleNumber"
+                value="${escapeAttr(initialRoleNumber)}"
+                placeholder="Ex: 123456" required autocomplete="off" autofocus>
+            </div>
+            <button class="ghost-button" type="button" id="roleFormSearchBtn" style="align-self:flex-end">Procurar role</button>
           </div>
+
+          <div id="roleInfoPanel">
+            ${initialRoleNumber ? roleFormInfoPanel(initialDr) : ""}
+          </div>
+
+          <label class="checkbox-label role-form-active-toggle">
+            <input type="checkbox" name="active" ${initialActive ? "checked" : ""}>
+            Role ativa
+          </label>
+
           <div class="modal-footer">
             <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
             <button class="primary-button" type="submit">Salvar</button>
@@ -4347,36 +4444,45 @@
     `);
 
     const roleInput = document.getElementById("roleNumber");
-    const rolePreview = document.getElementById("rolePreview");
+    const roleInfoPanel = document.getElementById("roleInfoPanel");
 
-    function updateRolePreview(roleIdExternal) {
-      if (!roleIdExternal) { rolePreview.innerHTML = ""; return; }
-      const dr = (state.data.demandRoles || []).find((r) => r.roleIdExternal === roleIdExternal);
-      rolePreview.innerHTML = dr
-        ? demandRolePreviewHtml(dr)
-        : `<p class="role-manual-note">Role nao encontrada na importacao — sera cadastrada manualmente.</p>`;
+    function updateRoleInfo(roleIdExternal) {
+      if (!roleIdExternal) { roleInfoPanel.innerHTML = ""; return; }
+      const dr = (state.data.demandRoles || []).find((r) => r.roleIdExternal === roleIdExternal) || null;
+      roleInfoPanel.innerHTML = roleFormInfoPanel(dr);
     }
 
-    roleInput.addEventListener("input", () => updateRolePreview(roleInput.value.trim()));
+    roleInput.addEventListener("input", () => updateRoleInfo(roleInput.value.trim()));
+
+    document.getElementById("roleFormSearchBtn").addEventListener("click", () => {
+      const currentRoleNumber = roleInput.value.trim();
+      openDemandRoleSearchModal((dr) => openProjectRoleForm({
+        prefillRole: dr,
+        existingRole: existingRole,
+      }));
+    });
 
     document.getElementById("projectRoleForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
       const roleNumber = String(formData.get("roleNumber") || "").trim();
       if (!roleNumber) return;
-      const projectRole = { id: createId(), roleNumber };
+      const active = formData.has("active");
+      const projectRole = { id: existingRole ? existingRole.id : createId(), roleNumber, active };
       try {
         if (window.staffingDatabase) {
           state.data = await window.staffingDatabase.saveProjectRole(projectRole);
         } else {
           state.data.projectRoles = state.data.projectRoles || [];
-          state.data.projectRoles.push(projectRole);
+          const idx = state.data.projectRoles.findIndex((r) => r.id === projectRole.id);
+          if (idx >= 0) state.data.projectRoles[idx] = projectRole;
+          else state.data.projectRoles.push(projectRole);
         }
         state.dbMode = "dirty";
         updateDbStatus("Banco alterado nao salvo");
         closeModal();
         render();
-        toast("Role adicionada ao pool.");
+        toast(isEdit ? "Role atualizada." : "Role adicionada ao pool.");
       } catch (err) {
         const msg = err && err.message ? err.message : String(err);
         toast(`Nao foi possivel salvar a role: ${msg}`);
@@ -5468,9 +5574,9 @@
       if (!c.calendarEndDate || c.calendarEndDate < today) return false;
       return calendarTypeClass(c.calendarType) === "booked";
     });
-    if (!booked.length) return { label: "Disponivel agora", available: true };
+    if (!booked.length) return { label: "Livre", available: true };
     const lastEnd = booked.reduce((max, c) => c.calendarEndDate > max ? c.calendarEndDate : max, booked[0].calendarEndDate);
-    return { label: `Disponivel apos ${formatDate(lastEnd)}`, available: false };
+    return { label: `Apos ${formatDate(lastEnd)}`, available: false };
   }
 
   function candidateStaffability(candidate) {

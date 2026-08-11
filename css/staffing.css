@@ -768,9 +768,10 @@ tbody tr:hover td {
 .availability-chip {
   display: inline-flex;
   align-items: center;
-  padding: 1px 8px;
+  min-height: 24px;
+  padding: 0 9px;
   border-radius: 999px;
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 800;
   white-space: nowrap;
   background: #fdecea;
@@ -780,6 +781,10 @@ tbody tr:hover td {
 .availability-chip--free {
   background: #e8f5e9;
   color: #1b5e20;
+}
+
+.row-inactive td {
+  opacity: 0.45;
 }
 
 .status-pill.active,
@@ -1958,6 +1963,115 @@ tbody tr:hover td {
   border-radius: 8px;
   font-size: 12px;
   color: var(--muted);
+}
+
+/* Role form redesign */
+.role-form-modal {
+  max-width: 680px;
+}
+
+.role-form-number-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+}
+
+.role-form-number-field {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  flex: 1;
+}
+
+#roleInfoPanel {
+  margin-top: 16px;
+}
+
+.role-form-no-match {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.role-form-info-panel {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: color-mix(in srgb, var(--accent) 4%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 10px;
+}
+
+.role-form-info-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.role-form-info-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.role-form-info-id {
+  font-size: 18px;
+  font-weight: 800;
+  font-family: monospace;
+  color: var(--ink);
+}
+
+.role-form-info-title {
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.role-form-info-meta {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  padding: 12px 0;
+  border-top: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 14%, var(--line));
+}
+
+.role-form-info-field {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.role-form-info-field-label {
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.role-form-info-field-value {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.role-form-info-assignee {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.role-form-active-toggle {
+  margin-top: 16px;
 }
 
 .form-field-label {
