@@ -415,6 +415,13 @@
       });
     });
 
+    document.querySelectorAll("[data-candidate-goto]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const candidate = byId("candidates", button.dataset.candidateGoto);
+        openCandidateForm(candidate);
+      });
+    });
+
     document.querySelectorAll("[data-candidate-export]").forEach((button) => {
       button.addEventListener("click", exportCandidatesToExcel);
     });
@@ -534,6 +541,13 @@
     document.querySelectorAll("[data-position-edit]").forEach((button) => {
       button.addEventListener("click", () => {
         const position = byId("positions", button.dataset.positionEdit);
+        openPositionForm(position);
+      });
+    });
+
+    document.querySelectorAll("[data-position-goto]").forEach((button) => {
+      button.addEventListener("click", () => {
+        const position = byId("positions", button.dataset.positionGoto);
         openPositionForm(position);
       });
     });
@@ -1627,20 +1641,24 @@
     const candidate = byId("candidates", app.candidateId);
     const position = byId("positions", app.positionId);
     const project = byId("projects", position.projectId);
-    const alerts = getApplicationAlerts(app);
+    const person = candidate.importedPersonId ? byId("importedPeople", candidate.importedPersonId) : null;
+    const careerLevel = person ? formatCareerLevel(person.resourceLevel) : "";
 
     return `
       <article class="kanban-card">
         <div class="kanban-card-head">
-          <strong>${candidate.name}</strong>
-          ${alerts.length ? `<span class="alert-count">${alerts.length}</span>` : ""}
+          <button class="kanban-name-link" type="button" data-candidate-goto="${escapeAttr(candidate.id)}">${escapeHtml(candidate.name)}</button>
+          ${careerLevel ? `<span class="career-level-badge kanban-cl">${escapeHtml(careerLevel)}</span>` : ""}
         </div>
-        <p>${position.name}${position.externalRoleId ? ` <code class="role-tag">${escapeHtml(position.externalRoleId)}</code>` : ""}</p>
-        <small>${project.name}</small>
-        ${statusPill(app.status)}
-        <div class="kanban-card-footer">
-          <span>${formatDateTime(app.statusDate)}</span>
-          <button class="ghost-button compact" type="button" data-application-edit="${app.id}">Editar</button>
+        <div class="kanban-divider"></div>
+        <div class="kanban-card-chips">
+          <span class="kanban-chip" title="${escapeAttr(project.name)}">${escapeHtml(project.name)}</span>
+          ${position.externalRoleId ? `<span class="kanban-chip">${escapeHtml(position.externalRoleId)}</span>` : ""}
+          ${statusPill(app.status)}
+        </div>
+        <div class="kanban-divider"></div>
+        <div class="kanban-card-actions">
+          <button class="ghost-button compact" type="button" data-application-edit="${escapeAttr(app.id)}">Editar</button>
         </div>
       </article>
     `;
