@@ -162,6 +162,37 @@
       FOREIGN KEY (imported_person_id) REFERENCES imported_person(imported_person_id) ON UPDATE CASCADE ON DELETE SET NULL
     );
 
+    CREATE TABLE IF NOT EXISTS demand_role (
+      demand_role_id TEXT PRIMARY KEY,
+      role_id_external TEXT NOT NULL UNIQUE,
+      role_title TEXT,
+      role_status TEXT,
+      client TEXT,
+      project_name TEXT,
+      start_date TEXT,
+      end_date TEXT,
+      fulfillment_channel TEXT,
+      candidates_identified_self TEXT,
+      candidates_identified TEXT,
+      candidates_proposed TEXT,
+      candidates_confirming TEXT,
+      candidates_filled TEXT,
+      candidates_not_selected TEXT,
+      contractor_name TEXT,
+      joiner_name TEXT,
+      internal_scheduling_status TEXT,
+      internal_scheduling_cancellation_reason TEXT,
+      contractor_status TEXT,
+      contractor_cancellation_reason TEXT,
+      recruiting_status TEXT,
+      recruiting_cancellation_reason TEXT,
+      cancellation_reason TEXT,
+      filled_date TEXT,
+      assignment_audit TEXT,
+      source TEXT NOT NULL DEFAULT 'IMPORT',
+      last_imported_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
+    );
+
     CREATE TABLE IF NOT EXISTS position_skill (
       position_id TEXT NOT NULL,
       skill_id TEXT NOT NULL,
@@ -767,6 +798,76 @@
     }
   }
 
+  async function saveDemandRoles(demandRoles) {
+    if (!db) {
+      await createEmpty();
+    }
+
+    db.run("BEGIN TRANSACTION;");
+    try {
+      demandRoles.forEach((item) => run(
+        `INSERT INTO demand_role (
+          demand_role_id, role_id_external, role_title, role_status, client, project_name,
+          start_date, end_date, fulfillment_channel, candidates_identified_self,
+          candidates_identified, candidates_proposed, candidates_confirming, candidates_filled,
+          candidates_not_selected, contractor_name, joiner_name, internal_scheduling_status,
+          internal_scheduling_cancellation_reason, contractor_status, contractor_cancellation_reason,
+          recruiting_status, recruiting_cancellation_reason, cancellation_reason, filled_date,
+          assignment_audit, source, last_imported_at
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+        ON CONFLICT(demand_role_id) DO UPDATE SET
+          role_id_external = excluded.role_id_external,
+          role_title = excluded.role_title,
+          role_status = excluded.role_status,
+          client = excluded.client,
+          project_name = excluded.project_name,
+          start_date = excluded.start_date,
+          end_date = excluded.end_date,
+          fulfillment_channel = excluded.fulfillment_channel,
+          candidates_identified_self = excluded.candidates_identified_self,
+          candidates_identified = excluded.candidates_identified,
+          candidates_proposed = excluded.candidates_proposed,
+          candidates_confirming = excluded.candidates_confirming,
+          candidates_filled = excluded.candidates_filled,
+          candidates_not_selected = excluded.candidates_not_selected,
+          contractor_name = excluded.contractor_name,
+          joiner_name = excluded.joiner_name,
+          internal_scheduling_status = excluded.internal_scheduling_status,
+          internal_scheduling_cancellation_reason = excluded.internal_scheduling_cancellation_reason,
+          contractor_status = excluded.contractor_status,
+          contractor_cancellation_reason = excluded.contractor_cancellation_reason,
+          recruiting_status = excluded.recruiting_status,
+          recruiting_cancellation_reason = excluded.recruiting_cancellation_reason,
+          cancellation_reason = excluded.cancellation_reason,
+          filled_date = excluded.filled_date,
+          assignment_audit = excluded.assignment_audit,
+          source = excluded.source,
+          last_imported_at = CURRENT_TIMESTAMP`,
+        [
+          item.id, item.roleIdExternal, item.roleTitle || null, item.roleStatus || null,
+          item.client || null, item.projectName || null, item.startDate || null, item.endDate || null,
+          item.fulfillmentChannel || null, item.candidatesIdentifiedSelf || null,
+          item.candidatesIdentified || null, item.candidatesProposed || null,
+          item.candidatesConfirming || null, item.candidatesFilled || null,
+          item.candidatesNotSelected || null, item.contractorName || null, item.joinerName || null,
+          item.internalSchedulingStatus || null, item.internalSchedulingCancellationReason || null,
+          item.contractorStatus || null, item.contractorCancellationReason || null,
+          item.recruitingStatus || null, item.recruitingCancellationReason || null,
+          item.cancellationReason || null, item.filledDate || null, item.assignmentAudit || null,
+          item.source || "IMPORT"
+        ]
+      ));
+
+      db.run("COMMIT;");
+      db.run("PRAGMA optimize;");
+      return readAll();
+    } catch (error) {
+      db.run("ROLLBACK;");
+      throw error;
+    }
+  }
+
   async function savePosition(position) {
     if (!db) {
       await createEmpty();
@@ -840,6 +941,30 @@
     run("DELETE FROM project_role WHERE project_role_id = ?", [id]);
     db.run("PRAGMA optimize;");
     return readAll();
+  }
+
+  async function saveProjectRoles(projectRoles) {
+    if (!db) await createEmpty();
+    db.run("BEGIN TRANSACTION;");
+    try {
+      projectRoles.forEach((projectRole) => {
+        run(
+          `INSERT INTO project_role (project_role_id, project_id, role_number)
+           VALUES (?, ?, ?)
+           ON CONFLICT(project_role_id) DO UPDATE SET
+             project_id = excluded.project_id,
+             role_number = excluded.role_number`,
+          [projectRole.id, projectRole.projectId, projectRole.roleNumber]
+        );
+      });
+
+      db.run("COMMIT;");
+      db.run("PRAGMA optimize;");
+      return readAll();
+    } catch (error) {
+      db.run("ROLLBACK;");
+      throw error;
+    }
   }
 
   async function savePositions(positions) {
@@ -1114,6 +1239,31 @@
         [item.id, item.positionId, item.candidateId, item.status, item.statusDate, item.notes]
       ));
 
+      (data.demandRoles || []).forEach((item) => run(
+        `INSERT INTO demand_role (
+          demand_role_id, role_id_external, role_title, role_status, client, project_name,
+          start_date, end_date, fulfillment_channel, candidates_identified_self,
+          candidates_identified, candidates_proposed, candidates_confirming, candidates_filled,
+          candidates_not_selected, contractor_name, joiner_name, internal_scheduling_status,
+          internal_scheduling_cancellation_reason, contractor_status, contractor_cancellation_reason,
+          recruiting_status, recruiting_cancellation_reason, cancellation_reason, filled_date,
+          assignment_audit, source
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          item.id, item.roleIdExternal, item.roleTitle || null, item.roleStatus || null,
+          item.client || null, item.projectName || null, item.startDate || null, item.endDate || null,
+          item.fulfillmentChannel || null, item.candidatesIdentifiedSelf || null,
+          item.candidatesIdentified || null, item.candidatesProposed || null,
+          item.candidatesConfirming || null, item.candidatesFilled || null,
+          item.candidatesNotSelected || null, item.contractorName || null, item.joinerName || null,
+          item.internalSchedulingStatus || null, item.internalSchedulingCancellationReason || null,
+          item.contractorStatus || null, item.contractorCancellationReason || null,
+          item.recruitingStatus || null, item.recruitingCancellationReason || null,
+          item.cancellationReason || null, item.filledDate || null, item.assignmentAudit || null,
+          item.source || "IMPORT"
+        ]
+      ));
+
       db.run("COMMIT;");
     } catch (error) {
       db.run("ROLLBACK;");
@@ -1141,7 +1291,8 @@
         .map((item) => ({ ...item, active: Boolean(item.active) })),
       allocationCalendars: rows("SELECT allocation_calendar_id AS id, imported_person_id AS importedPersonId, employee_name AS employeeName, enterprise_id AS enterpriseId, personnel_number AS personnelNumber, staffable_detail AS staffableDetail, staffable_capacity AS staffableCapacity, percent_staffable AS percentStaffable, calendar_type AS calendarType, calendar_description AS calendarDescription, calendar_chargeable AS calendarChargeable, calendar_comments AS calendarComments, calendar_start_date AS calendarStartDate, calendar_end_date AS calendarEndDate, percent_allocated AS percentAllocated, client, project_id_external AS projectIdExternal, common_project_id AS commonProjectId, project_name AS projectName, role_id_external AS roleIdExternal, role_title AS roleTitle, role_description AS roleDescription, role_requested_start_date AS roleRequestedStartDate, role_end_date AS roleEndDate, candidate_status AS candidateStatus, candidate_status_update_date AS candidateStatusUpdateDate, rolloff_confirmed AS rolloffConfirmed, rolloff_confirmation_date AS rolloffConfirmationDate, last_calendar_update_date AS lastCalendarUpdateDate, source FROM allocation_calendar ORDER BY calendar_start_date DESC"),
       applications: rows("SELECT application_id AS id, position_id AS positionId, candidate_id AS candidateId, status, status_date AS statusDate, notes FROM application ORDER BY status_date DESC"),
-      importBatches: rows("SELECT import_batch_id AS id, source, source_file_name AS fileName, imported_at AS importedAt, row_count AS rowCount, success_count AS successCount, error_count AS errorCount, created_count AS createdCount, updated_count AS updatedCount, skipped_count AS skippedCount, notes FROM import_batch ORDER BY imported_at DESC")
+      importBatches: rows("SELECT import_batch_id AS id, source, source_file_name AS fileName, imported_at AS importedAt, row_count AS rowCount, success_count AS successCount, error_count AS errorCount, created_count AS createdCount, updated_count AS updatedCount, skipped_count AS skippedCount, notes FROM import_batch ORDER BY imported_at DESC"),
+      demandRoles: rows("SELECT demand_role_id AS id, role_id_external AS roleIdExternal, role_title AS roleTitle, role_status AS roleStatus, client, project_name AS projectName, start_date AS startDate, end_date AS endDate, fulfillment_channel AS fulfillmentChannel, candidates_identified_self AS candidatesIdentifiedSelf, candidates_identified AS candidatesIdentified, candidates_proposed AS candidatesProposed, candidates_confirming AS candidatesConfirming, candidates_filled AS candidatesFilled, candidates_not_selected AS candidatesNotSelected, contractor_name AS contractorName, joiner_name AS joinerName, internal_scheduling_status AS internalSchedulingStatus, internal_scheduling_cancellation_reason AS internalSchedulingCancellationReason, contractor_status AS contractorStatus, contractor_cancellation_reason AS contractorCancellationReason, recruiting_status AS recruitingStatus, recruiting_cancellation_reason AS recruitingCancellationReason, cancellation_reason AS cancellationReason, filled_date AS filledDate, assignment_audit AS assignmentAudit, source FROM demand_role ORDER BY role_id_external")
     };
   }
 
@@ -1182,7 +1333,8 @@
       importedPeople: [],
       allocationCalendars: [],
       applications: [],
-      importBatches: []
+      importBatches: [],
+      demandRoles: []
     };
   }
 
@@ -1223,8 +1375,10 @@
     saveCandidates,
     saveImportedPeople,
     saveAllocationCalendars,
+    saveDemandRoles,
     saveImportBatch,
     saveProjectRole,
+    saveProjectRoles,
     deleteProjectRole,
     savePosition,
     savePositions,

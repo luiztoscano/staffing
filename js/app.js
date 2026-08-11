@@ -9,8 +9,6 @@
     calendarSelectedDate: null,
     pipelineView: "kanban",
     selectedPositionIds: new Set(),
-    projectDetailId: null,
-    projectDetailTab: "positions",
     data: structuredClone(window.staffingSeed),
     dbMode: "memory"
   };
@@ -238,21 +236,14 @@
       const button = event.target.closest("[data-view]");
       if (!button) return;
       state.view = button.dataset.view;
-      state.projectDetailId = null;
       render();
     });
   }
 
   function render() {
     const view = views.find((item) => item.id === state.view);
-    if (state.view === "projects" && state.projectDetailId) {
-      const project = byId("projects", state.projectDetailId);
-      el.title.textContent = project ? project.name : view.title;
-      el.eyebrow.textContent = "Projeto";
-    } else {
-      el.title.textContent = view.title;
-      el.eyebrow.textContent = view.eyebrow;
-    }
+    el.title.textContent = view.title;
+    el.eyebrow.textContent = view.eyebrow;
 
     const hideTopbarExtras = state.view === "projects";
     el.search.closest(".search-box").style.display = hideTopbarExtras ? "none" : "";
@@ -360,28 +351,6 @@
       });
     });
 
-    document.querySelectorAll("[data-project-open]").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.projectDetailId = button.dataset.projectOpen;
-        state.projectDetailTab = "positions";
-        render();
-      });
-    });
-
-    document.querySelectorAll("[data-project-back]").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.projectDetailId = null;
-        render();
-      });
-    });
-
-    document.querySelectorAll("[data-project-detail-tab]").forEach((button) => {
-      button.addEventListener("click", () => {
-        state.projectDetailTab = button.dataset.projectDetailTab;
-        render();
-      });
-    });
-
     document.querySelectorAll("[data-project-export]").forEach((button) => {
       button.addEventListener("click", exportProjectsToExcel);
     });
@@ -476,6 +445,15 @@
       });
     });
 
+    document.querySelectorAll("[data-demandroles-import]").forEach((input) => {
+      input.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        await handleImportFile("demandroles", file);
+        event.target.value = "";
+      });
+    });
+
     document.querySelectorAll("[data-import-drop]").forEach((dropArea) => {
       dropArea.addEventListener("click", (event) => {
         if (event.target.matches("input")) return;
@@ -500,7 +478,7 @@
     });
 
     document.querySelectorAll("[data-project-role-new]").forEach((button) => {
-      button.addEventListener("click", () => openProjectRoleForm(button.dataset.projectRoleNew));
+      button.addEventListener("click", () => openProjectRoleForm());
     });
 
     document.querySelectorAll("[data-project-role-delete]").forEach((button) => {
@@ -529,11 +507,21 @@
       });
     });
 
-    document.querySelectorAll("[data-position-new]").forEach((button) => {
-      button.addEventListener("click", () => {
-        if (state.projectDetailId) state.selectedProjectId = state.projectDetailId;
-        openPositionForm();
+    document.querySelectorAll("[data-project-role-export]").forEach((button) => {
+      button.addEventListener("click", exportProjectRolesToExcel);
+    });
+
+    document.querySelectorAll("[data-project-role-import]").forEach((input) => {
+      input.addEventListener("change", async (event) => {
+        const file = event.target.files[0];
+        if (!file) return;
+        await importProjectRolesFromExcel(file);
+        event.target.value = "";
       });
+    });
+
+    document.querySelectorAll("[data-position-new]").forEach((button) => {
+      button.addEventListener("click", () => openPositionForm());
     });
 
     document.querySelectorAll("[data-position-edit]").forEach((button) => {
@@ -613,6 +601,7 @@
     try {
       if (type === "people") await importPeopleFromExcel(file, onProgress);
       else if (type === "calendar") await importAllocationCalendarsFromExcel(file, onProgress);
+      else if (type === "demandroles") await importDemandRolesFromExcel(file, onProgress);
     } finally {
       if (dropArea) clearImportProgress(dropArea);
     }
@@ -638,12 +627,6 @@
   }
 
   function renderProjects() {
-    if (state.projectDetailId) {
-      const project = byId("projects", state.projectDetailId);
-      if (project) return renderProjectDetail(project);
-      state.projectDetailId = null;
-    }
-
     const projects = filterItems(state.data.projects, ["name", "description", "status"]);
     const allAlerts = getAlerts();
 
@@ -699,7 +682,6 @@
                   </div>
                   <div class="project-card-actions">
                     <button class="ghost-button compact" type="button" data-project-edit="${escapeAttr(project.id)}">Editar</button>
-                    <button class="primary-button compact" type="button" data-project-open="${escapeAttr(project.id)}">Abrir →</button>
                   </div>
                 </div>
               </article>
@@ -710,198 +692,79 @@
     `;
   }
 
-  function renderProjectDetail(project) {
-    const tab = state.projectDetailTab;
-    const positions = state.data.positions.filter((p) => p.projectId === project.id);
-    const roles = (state.data.projectRoles || []).filter((r) => r.projectId === project.id);
-    const projectAlerts = getAlerts().filter((a) => a.projectId === project.id);
-    const totals = projectCostTotals(positions, project);
-    const totalLine = totals.size
-      ? [...totals.entries()].map(([cur, val]) => formatCurrency(val, cur)).join(" + ")
-      : null;
-
-    return `
-      <div class="project-detail">
-        <div class="project-detail-header">
-          <div class="project-detail-utility">
-            <button class="ghost-button compact" type="button" data-project-back>← Projetos</button>
-            <button class="ghost-button compact" type="button" data-project-edit="${escapeAttr(project.id)}">Editar projeto</button>
-          </div>
-
-          <div class="project-detail-title">
-            <h2>${escapeHtml(project.name)}</h2>
-            ${statusPill(project.status)}
-          </div>
-          ${project.description ? `<p class="project-detail-desc">${escapeHtml(project.description)}</p>` : ""}
-          <div class="project-detail-meta">
-            <span>${formatDate(project.startDate)} – ${formatDate(project.endDate)}</span>
-            ${totalLine ? `<span class="record-cost-total">Custo acumulado: <strong>${escapeHtml(totalLine)}</strong></span>` : ""}
-          </div>
-
-          <div class="project-detail-stats">
-            <div class="project-stat">
-              <span class="project-stat-value">${positions.length}</span>
-              <span class="project-stat-label">Posicoes</span>
-            </div>
-            <div class="project-stat">
-              <span class="project-stat-value">${roles.length}</span>
-              <span class="project-stat-label">Roles</span>
-            </div>
-            <div class="project-stat${projectAlerts.length ? " project-stat--alert" : ""}">
-              <span class="project-stat-value">${projectAlerts.length}</span>
-              <span class="project-stat-label">Alertas</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="project-detail-tabs">
-          <button class="tab-button${tab === "positions" ? " active" : ""}" type="button" data-project-detail-tab="positions">
-            Posicoes <span class="tab-count">${positions.length}</span>
-          </button>
-          <button class="tab-button${tab === "roles" ? " active" : ""}" type="button" data-project-detail-tab="roles">
-            Roles <span class="tab-count">${roles.length}</span>
-          </button>
-          <button class="tab-button${tab === "alerts" ? " active" : ""}" type="button" data-project-detail-tab="alerts">
-            Alertas ${projectAlerts.length ? `<span class="tab-count alert">${projectAlerts.length}</span>` : `<span class="tab-count">0</span>`}
-          </button>
-        </div>
-
-        <div class="project-detail-body">
-          ${tab === "positions" ? renderProjectDetailPositions(project, positions) : ""}
-          ${tab === "roles" ? renderProjectDetailRoles(project, roles) : ""}
-          ${tab === "alerts" ? renderProjectDetailAlerts(project, projectAlerts) : ""}
-        </div>
-      </div>
-    `;
-  }
-
-  function renderProjectDetailPositions(project, positions) {
-    const totals = projectCostTotals(positions, project);
-    const totalLine = totals.size
-      ? [...totals.entries()].map(([cur, val]) => formatCurrency(val, cur)).join(" + ")
-      : null;
-
-    return `
-      <div class="panel-header" style="padding: 0 0 16px 0">
-        <div></div>
-        <div class="toolbar">
-          <button class="primary-button compact" type="button" data-position-new>Nova posicao</button>
-        </div>
-      </div>
-      ${positions.length ? `
-        <table class="data-table">
-          <thead>
-            <tr>
-              <th>Posicao</th>
-              <th>Role</th>
-              <th>Status</th>
-              <th>Alocacao / Candidato</th>
-              <th class="num-col">Custo acumulado</th>
-              <th style="width:64px"></th>
-            </tr>
-          </thead>
-          <tbody>
-            ${positions.map((pos) => {
-              const info = positionFillInfo(pos, project);
-              const roleCell = pos.externalRoleId
-                ? `<span class="mono-text">${escapeHtml(pos.externalRoleId)}</span>`
-                : `<span class="muted">—</span>`;
-              let candidateCell;
-              if (!info.filled) {
-                candidateCell = `<span class="muted">Sem candidatura</span>`;
-              } else if (info.roleMatch) {
-                candidateCell = `<strong>${escapeHtml(info.candidate.name)}</strong><span class="status-pill confirmed">Reservado</span>`;
-              } else {
-                candidateCell = `<strong>${escapeHtml(info.candidate.name)}</strong><span class="status-pill in-process">${escapeHtml(labels[info.application.status] || info.application.status)}</span>`;
-              }
-              const costCell = info.cost
-                ? `<strong>${formatCurrency(info.cost.value, info.cost.currency)}</strong>`
-                : `<span class="muted">—</span>`;
-              return `
-                <tr>
-                  <td><strong>${escapeHtml(pos.name)}</strong></td>
-                  <td>${roleCell}</td>
-                  <td>${statusPill(pos.status)}</td>
-                  <td>${candidateCell}</td>
-                  <td class="num-col">${costCell}</td>
-                  <td><button class="ghost-button compact" type="button" data-position-edit="${escapeAttr(pos.id)}">Editar</button></td>
-                </tr>
-              `;
-            }).join("")}
-          </tbody>
-          ${totalLine ? `
-            <tfoot>
-              <tr>
-                <td colspan="5" style="text-align:right; font-weight:700;">Total acumulado</td>
-                <td><strong>${escapeHtml(totalLine)}</strong></td>
-                <td></td>
-              </tr>
-            </tfoot>
-          ` : ""}
-        </table>
-      ` : emptyState("Nenhuma posicao cadastrada neste projeto.")}
-    `;
-  }
-
-  function renderProjectDetailRoles(project, roles) {
+  function projectRoleRows(projectRoles) {
     const today = todayIso();
     const calendars = state.data.allocationCalendars || [];
+    const demandByRoleId = new Map((state.data.demandRoles || []).map((dr) => [dr.roleIdExternal, dr]));
 
+    return (projectRoles || []).map((r) => {
+      const project = byId("projects", r.projectId);
+      const dr = demandByRoleId.get(r.roleNumber) || {};
+      const allocations = calendars
+        .filter((cal) =>
+          cal.roleIdExternal === r.roleNumber &&
+          cal.calendarStartDate && cal.calendarEndDate &&
+          cal.calendarStartDate <= today && cal.calendarEndDate >= today
+        )
+        .map((cal) => ({ name: cal.employeeName || "—", status: cal.candidateStatus || "—" }));
+
+      return {
+        id: r.id,
+        projectId: r.projectId,
+        projectName: project ? project.name : "",
+        roleNumber: r.roleNumber,
+        client: dr.client || "",
+        roleTitle: dr.roleTitle || "",
+        roleStatus: dr.roleStatus || "",
+        cancellationReason: dr.cancellationReason,
+        candidatesIdentified: dr.candidatesIdentified,
+        candidatesIdentifiedSelf: dr.candidatesIdentifiedSelf,
+        candidatesProposed: dr.candidatesProposed,
+        candidatesConfirming: dr.candidatesConfirming,
+        candidatesFilled: dr.candidatesFilled,
+        candidatesNotSelected: dr.candidatesNotSelected,
+        joinerName: dr.joinerName,
+        contractorName: dr.contractorName,
+        allocations
+      };
+    });
+  }
+
+  function rolesTable(rows, { showProjectColumn = false } = {}) {
+    const colCount = showProjectColumn ? 6 : 5;
     return `
-      <div class="panel-header" style="padding: 0 0 16px 0">
-        <div></div>
-        <div class="toolbar">
-          <button class="ghost-button compact" type="button" data-project-role-new="${escapeAttr(project.id)}">+ Adicionar role</button>
-        </div>
-      </div>
-      ${roles.length ? `
-        <table class="data-table">
+      <div class="table-wrap">
+        <table>
           <thead>
             <tr>
-              <th>Numero da Role</th>
-              <th>Alocado</th>
+              <th>Role</th>
+              ${showProjectColumn ? "<th>Projeto</th>" : ""}
+              <th>Cliente</th>
               <th>Status</th>
-              <th>Periodo</th>
+              <th>Alocado</th>
               <th style="width:48px"></th>
             </tr>
           </thead>
           <tbody>
-            ${roles.map((r) => {
-              const allocs = calendars.filter((cal) =>
-                cal.roleIdExternal === r.roleNumber &&
-                cal.calendarStartDate && cal.calendarEndDate &&
-                cal.calendarStartDate <= today && cal.calendarEndDate >= today
-              );
-              if (!allocs.length) {
-                return `
-                  <tr>
-                    <td><code>${escapeHtml(r.roleNumber)}</code></td>
-                    <td class="muted-cell" colspan="2">Sem alocacao vigente</td>
-                    <td></td>
-                    <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>
-                  </tr>
-                `;
-              }
-              return allocs.map((cal, i) => `
-                <tr>
-                  ${i === 0 ? `<td rowspan="${allocs.length}"><code>${escapeHtml(r.roleNumber)}</code></td>` : ""}
-                  <td>${escapeHtml(cal.employeeName || "—")}</td>
-                  <td>${escapeHtml(cal.candidateStatus || "—")}</td>
-                  <td class="muted-cell" style="white-space:nowrap;font-size:12px">${formatDate(cal.calendarStartDate)} – ${formatDate(cal.calendarEndDate)}</td>
-                  ${i === 0 ? `<td rowspan="${allocs.length}"><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>` : ""}
-                </tr>
-              `).join("");
-            }).join("")}
+            ${rows.map((row) => `
+              <tr>
+                <td><code>${escapeHtml(row.roleNumber)}</code></td>
+                ${showProjectColumn ? `<td>${escapeHtml(row.projectName)}</td>` : ""}
+                <td>${escapeHtml(row.client || "—")}</td>
+                <td>${demandRoleInfoHtml(row) || `<span class="muted">—</span>`}</td>
+                <td>${allocationSummaryHtml(row.allocations)}</td>
+                <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(row.id)}" title="Excluir">×</button></td>
+              </tr>
+            `).join("") || tableEmpty(colCount, "Nenhuma role cadastrada.")}
           </tbody>
         </table>
-      ` : emptyState("Nenhuma role cadastrada para este projeto.")}
+      </div>
     `;
   }
 
-  function renderProjectDetailAlerts(project, alerts) {
-    return alerts.length
-      ? `<div class="alert-list">${alerts.map(alertCard).join("")}</div>`
-      : emptyState("Nenhum alerta para este projeto.");
+  function allocationSummaryHtml(allocations) {
+    if (!allocations || !allocations.length) return `<span class="muted-cell">Sem alocacao vigente</span>`;
+    return allocations.map((a) => `<div><strong>${escapeHtml(a.name)}</strong> <span class="muted-cell" style="font-size:12px">${escapeHtml(a.status)}</span></div>`).join("");
   }
 
   function renderPositions() {
@@ -943,12 +806,12 @@
 
   function renderProjectRoles() {
     const projects = state.data.projects;
-    const today = todayIso();
-    const calendars = state.data.allocationCalendars || [];
+    const rows = filterItems(projectRoleRows(state.data.projectRoles), ["roleNumber", "roleTitle", "roleStatus", "client", "projectName"])
+      .filter((r) => state.selectedProjectId === "all" || r.projectId === state.selectedProjectId);
 
     return `
       <section class="panel">
-        <div class="panel-header">
+        <div class="panel-header toolbar-header">
           <div>
             <span class="eyebrow">Roles de Projeto</span>
             <h2>Numeros de role por projeto</h2>
@@ -960,64 +823,15 @@
                 <option value="${escapeAttr(p.id)}"${state.selectedProjectId === p.id ? " selected" : ""}>${escapeHtml(p.name)}</option>
               `).join("")}
             </select>
+            <button class="ghost-button compact" type="button" data-project-role-export>Exportar Excel</button>
+            <label class="file-button compact">
+              Importar Excel
+              <input type="file" accept=".xlsx,.xls" data-project-role-import>
+            </label>
+            <button class="primary-button compact" type="button" data-project-role-new>+ Adicionar role</button>
           </div>
         </div>
-        ${projects.length === 0 ? emptyState("Nenhum projeto cadastrado.") : `
-          <div class="project-roles-layout">
-            ${projects.filter((p) => state.selectedProjectId === "all" || p.id === state.selectedProjectId).map((project) => {
-              const roles = (state.data.projectRoles || []).filter((r) => r.projectId === project.id);
-              return `
-                <div class="project-roles-group">
-                  <div class="project-roles-group-header">
-                    <strong>${escapeHtml(project.name)}</strong>
-                    <button class="ghost-button compact" type="button" data-project-role-new="${escapeAttr(project.id)}">+ Adicionar role</button>
-                  </div>
-                  ${roles.length ? `
-                    <table class="data-table">
-                      <thead>
-                        <tr>
-                          <th>Numero da Role</th>
-                          <th>Alocado</th>
-                          <th>Status</th>
-                          <th>Periodo</th>
-                          <th style="width:48px"></th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        ${roles.map((r) => {
-                          const allocs = calendars.filter((cal) =>
-                            cal.roleIdExternal === r.roleNumber &&
-                            cal.calendarStartDate && cal.calendarEndDate &&
-                            cal.calendarStartDate <= today && cal.calendarEndDate >= today
-                          );
-                          if (!allocs.length) {
-                            return `
-                              <tr>
-                                <td><code>${escapeHtml(r.roleNumber)}</code></td>
-                                <td class="muted-cell" colspan="2">Sem alocacao vigente</td>
-                                <td></td>
-                                <td><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>
-                              </tr>
-                            `;
-                          }
-                          return allocs.map((cal, i) => `
-                            <tr>
-                              ${i === 0 ? `<td rowspan="${allocs.length}"><code>${escapeHtml(r.roleNumber)}</code></td>` : ""}
-                              <td>${escapeHtml(cal.employeeName || "—")}</td>
-                              <td>${escapeHtml(cal.candidateStatus || "—")}</td>
-                              <td class="muted-cell" style="white-space:nowrap;font-size:12px">${formatDate(cal.calendarStartDate)} – ${formatDate(cal.calendarEndDate)}</td>
-                              ${i === 0 ? `<td rowspan="${allocs.length}"><button class="icon-button" type="button" data-project-role-delete="${escapeAttr(r.id)}" title="Excluir">×</button></td>` : ""}
-                            </tr>
-                          `).join("");
-                        }).join("")}
-                      </tbody>
-                    </table>
-                  ` : `<p class="muted-text">Nenhuma role cadastrada para este projeto.</p>`}
-                </div>
-              `;
-            }).join("")}
-          </div>
-        `}
+        ${rolesTable(rows, { showProjectColumn: true })}
       </section>
     `;
   }
@@ -1948,6 +1762,13 @@
           <h2>Importar calendarios</h2>
           <p>Arraste o individual_status_report.xlsx aqui ou clique para selecionar.</p>
           <input class="visually-hidden" type="file" accept=".xlsx,.xls" data-calendar-import>
+        </article>
+
+        <article class="panel import-drop" data-import-drop="demandroles" role="button" tabindex="0">
+          <span class="drop-icon" aria-hidden="true">⬢</span>
+          <h2>Importar status de roles</h2>
+          <p>Arraste o Demand Candidate List Report.xlsx aqui ou clique para selecionar.</p>
+          <input class="visually-hidden" type="file" accept=".xlsx,.xls" data-demandroles-import>
         </article>
       </section>
 
@@ -3290,6 +3111,121 @@
     return { positions, errors, created, updated };
   }
 
+  async function exportProjectRolesToExcel() {
+    if (!window.staffingExcel) {
+      toast("Exportacao Excel nao esta disponivel.");
+      return;
+    }
+
+    const projectsById = Object.fromEntries(state.data.projects.map((p) => [p.id, p]));
+    const demandByRoleId = new Map((state.data.demandRoles || []).map((dr) => [dr.roleIdExternal, dr]));
+    const rows = (state.data.projectRoles || []).map((r) => {
+      const dr = demandByRoleId.get(r.roleNumber) || {};
+      return {
+        Id: r.id,
+        ProjectId: r.projectId,
+        ProjectName: (projectsById[r.projectId] || {}).name || "",
+        RoleNumber: r.roleNumber,
+        RoleTitle: dr.roleTitle || "",
+        Client: dr.client || "",
+        RoleStatus: dr.roleStatus || ""
+      };
+    });
+
+    try {
+      await window.staffingExcel.exportSheet("staffing_project_roles.xlsx", "ProjectRoles", rows);
+      toast("Roles de Projeto exportadas para Excel.");
+    } catch (error) {
+      toast("Nao foi possivel exportar Roles de Projeto.");
+      console.error(error);
+    }
+  }
+
+  async function importProjectRolesFromExcel(file) {
+    if (!window.staffingExcel) {
+      toast("Importacao Excel nao esta disponivel.");
+      return;
+    }
+
+    try {
+      const rows = await window.staffingExcel.readFirstSheet(file);
+      const result = parseProjectRoleImportRows(rows);
+
+      if (result.errors.length) {
+        toast(`Importacao bloqueada: ${result.errors.length} erro(s) encontrados.`);
+        showImportErrors("Roles de Projeto", result.errors);
+        return;
+      }
+
+      const confirmed = window.confirm(
+        `Importar Roles de Projeto?\n\nNovos: ${result.created}\nAtualizados: ${result.updated}\n\nA importacao nao apaga registros.`
+      );
+      if (!confirmed) return;
+
+      if (window.staffingDatabase) {
+        state.data = await window.staffingDatabase.saveProjectRoles(result.projectRoles);
+      } else {
+        result.projectRoles.forEach((projectRole) => {
+          state.data.projectRoles = state.data.projectRoles || [];
+          const index = state.data.projectRoles.findIndex((item) => item.id === projectRole.id);
+          if (index >= 0) state.data.projectRoles[index] = projectRole;
+          else state.data.projectRoles.push(projectRole);
+        });
+      }
+
+      state.dbMode = "dirty";
+      updateDbStatus("Banco alterado nao salvo");
+      render();
+      toast(`Roles de Projeto importadas: ${result.created} nova(s), ${result.updated} atualizada(s).`);
+    } catch (error) {
+      toast("Nao foi possivel importar Roles de Projeto.");
+      console.error(error);
+    }
+  }
+
+  function parseProjectRoleImportRows(rows) {
+    const errors = [];
+    const projectRoles = [];
+    let created = 0;
+    let updated = 0;
+    const existingById = new Map((state.data.projectRoles || []).map((r) => [r.id, r]));
+    const projectIds = new Set(state.data.projects.map((p) => p.id));
+    const demandRoleIds = new Set((state.data.demandRoles || []).map((dr) => dr.roleIdExternal));
+    const existingPairs = new Map((state.data.projectRoles || []).map((r) => [`${r.projectId}::${r.roleNumber}`, r.id]));
+    const seenIds = new Set();
+    const seenPairs = new Map();
+
+    rows.forEach((rawRow, index) => {
+      const rowNumber = index + 2;
+      const row = normalizeRow(rawRow);
+      const id = cleanCell(row.id);
+      const projectId = cleanCell(row.projectid);
+      const roleNumber = cleanCell(row.rolenumber);
+
+      if (id && !existingById.has(id)) errors.push(`Linha ${rowNumber}: Id informado nao existe no banco.`);
+      if (id && seenIds.has(id)) errors.push(`Linha ${rowNumber}: Id duplicado no arquivo.`);
+      if (!projectId) errors.push(`Linha ${rowNumber}: ProjectId e obrigatorio.`);
+      if (projectId && !projectIds.has(projectId)) errors.push(`Linha ${rowNumber}: ProjectId nao existe no cadastro de projetos.`);
+      if (!roleNumber) errors.push(`Linha ${rowNumber}: RoleNumber e obrigatorio.`);
+      if (roleNumber && !demandRoleIds.has(roleNumber)) errors.push(`Linha ${rowNumber}: RoleNumber informado nao foi importado no relatorio de Demanda (Roles).`);
+
+      const finalId = id || createId();
+      const pairKey = `${projectId}::${roleNumber}`;
+      const existingPairId = existingPairs.get(pairKey);
+      if (existingPairId && existingPairId !== finalId) errors.push(`Linha ${rowNumber}: ja existe uma role ${roleNumber} cadastrada para este projeto.`);
+      if (seenPairs.has(pairKey) && seenPairs.get(pairKey) !== finalId) errors.push(`Linha ${rowNumber}: combinacao de ProjectId e RoleNumber duplicada no arquivo.`);
+
+      seenIds.add(finalId);
+      seenPairs.set(pairKey, finalId);
+      projectRoles.push({ id: finalId, projectId, roleNumber });
+
+      if (id) updated += 1;
+      else created += 1;
+    });
+
+    return { projectRoles, errors, created, updated };
+  }
+
   async function importPeopleFromExcel(file, onProgress = () => {}) {
     if (!window.staffingExcel) {
       toast("Importacao Excel nao esta disponivel.");
@@ -3609,6 +3545,133 @@
     return { calendars, errors, skipped };
   }
 
+  async function importDemandRolesFromExcel(file, onProgress = () => {}) {
+    if (!window.staffingExcel) {
+      toast("Importacao Excel nao esta disponivel.");
+      return;
+    }
+
+    try {
+      onProgress("Lendo arquivo...");
+      await yieldToUI();
+      const rows = await window.staffingExcel.readFirstTabularSheet(file);
+
+      if (!rows.length) {
+        toast("O arquivo foi lido mas nao contém linhas de dados. Verifique se a aba correta contém as roles.");
+        return;
+      }
+
+      onProgress(`Processando ${rows.length} linha(s)...`);
+      await yieldToUI();
+      const result = parseDemandRoleImportRows(rows);
+
+      if (result.errors.length) {
+        await recordImportBatch({
+          source: "DEMAND_ROLES",
+          fileName: file.name,
+          rowCount: rows.length,
+          successCount: 0,
+          errorCount: rejectedRowCount(result.errors),
+          createdCount: 0,
+          updatedCount: 0,
+          skippedCount: result.skipped,
+          notes: `Importacao bloqueada: ${result.errors.length} erro(s) encontrados.`
+        });
+        state.dbMode = "dirty";
+        updateDbStatus("Banco alterado nao salvo");
+        render();
+        toast(`Importacao bloqueada: ${result.errors.length} erro(s) encontrados.`);
+        showImportErrors("Roles (Demanda)", result.errors);
+        return;
+      }
+
+      onProgress("Salvando no banco de dados...");
+      await yieldToUI();
+      const existingDemandRoleIds = new Set((state.data.demandRoles || []).map((item) => item.id));
+      const createdCount = result.demandRoles.filter((item) => !existingDemandRoleIds.has(item.id)).length;
+      const updatedCount = result.demandRoles.length - createdCount;
+      state.data = window.staffingDatabase
+        ? await window.staffingDatabase.saveDemandRoles(result.demandRoles)
+        : { ...state.data, demandRoles: mergeById(state.data.demandRoles || [], result.demandRoles) };
+      await recordImportBatch({
+        source: "DEMAND_ROLES",
+        fileName: file.name,
+        rowCount: rows.length,
+        successCount: result.demandRoles.length,
+        errorCount: 0,
+        createdCount,
+        updatedCount,
+        skippedCount: result.skipped,
+        notes: result.skipped ? `${result.skipped} linha(s) ignorada(s) por duplicidade ou ausencia de Role ID.` : "Importacao concluida."
+      });
+
+      state.dbMode = "dirty";
+      updateDbStatus("Banco alterado nao salvo");
+      render();
+      toast(`Roles de demanda importadas: ${result.demandRoles.length} registro(s). Ignorados: ${result.skipped}.`);
+    } catch (error) {
+      const msg = error && error.message ? error.message : String(error);
+      toast(`Nao foi possivel importar Roles (Demanda): ${msg}`);
+      console.error(error);
+    }
+  }
+
+  function parseDemandRoleImportRows(rows) {
+    const errors = [];
+    const demandRoles = [];
+    const seen = new Set();
+    let skipped = 0;
+
+    rows.forEach((rawRow) => {
+      const row = normalizeRow(rawRow);
+      const roleIdExternal = rowValue(row, ["roleid"]);
+
+      if (!roleIdExternal) {
+        skipped += 1;
+        return;
+      }
+
+      const id = stableId(["DEMANDROLE", roleIdExternal]);
+      if (seen.has(id)) {
+        skipped += 1;
+        return;
+      }
+      seen.add(id);
+
+      demandRoles.push({
+        id,
+        roleIdExternal,
+        roleTitle: rowValue(row, ["roletitle"]),
+        roleStatus: rowValue(row, ["rolestatus"]),
+        client: rowValue(row, ["client"]),
+        projectName: rowValue(row, ["project"]),
+        startDate: normalizeDateCell(rowValue(row, ["rolestartdate"])),
+        endDate: normalizeDateCell(rowValue(row, ["roleenddate"])),
+        fulfillmentChannel: rowValue(row, ["rolefulfillmentchannel"]),
+        candidatesIdentifiedSelf: rowValue(row, ["candidatesidentifiedself"]),
+        candidatesIdentified: rowValue(row, ["candidatesidentified"]),
+        candidatesProposed: rowValue(row, ["candidatesproposed"]),
+        candidatesConfirming: rowValue(row, ["candidatesconfirming"]),
+        candidatesFilled: rowValue(row, ["candidatesfilled"]),
+        candidatesNotSelected: rowValue(row, ["candidatesnotselected"]),
+        contractorName: rowValue(row, ["rolecontractorname"]),
+        joinerName: rowValue(row, ["rolejoinername"]),
+        internalSchedulingStatus: rowValue(row, ["roleinternalschedulingstatus"]),
+        internalSchedulingCancellationReason: rowValue(row, ["roleinternalschedulingcancellationreason"]),
+        contractorStatus: rowValue(row, ["rolecontractorstatus"]),
+        contractorCancellationReason: rowValue(row, ["rolecontractorcancellationreason"]),
+        recruitingStatus: rowValue(row, ["rolerecruitingstatus"]),
+        recruitingCancellationReason: rowValue(row, ["rolerecruitingcancellationreason"]),
+        cancellationReason: rowValue(row, ["rolecancellationreason"]),
+        filledDate: normalizeDateCell(rowValue(row, ["rolefilleddate"])),
+        assignmentAudit: rowValue(row, ["assignmentaudit"]),
+        source: "IMPORT"
+      });
+    });
+
+    return { demandRoles, errors, skipped };
+  }
+
   async function recordImportBatch(batch) {
     const importBatch = {
       id: createId(),
@@ -3646,7 +3709,8 @@
   function importSourceLabel(source) {
     return {
       PEOPLE: "Pessoas",
-      CALENDAR: "Calendarios"
+      CALENDAR: "Calendarios",
+      DEMAND_ROLES: "Roles (Demanda)"
     }[source] || source;
   }
 
@@ -4206,37 +4270,61 @@
     }
   }
 
-  function openProjectRoleForm(projectId) {
-    const project = byId("projects", projectId);
-    if (!project) return;
+  function openProjectRoleForm() {
+    if (!state.data.projects.length) {
+      toast("Cadastre um projeto antes de adicionar roles.");
+      return;
+    }
+
+    const usedRoleNumbers = new Set((state.data.projectRoles || []).map((r) => r.roleNumber));
+    const availableDemandRoles = (state.data.demandRoles || []).filter((dr) => !usedRoleNumbers.has(dr.roleIdExternal));
+
     openModal(`
       <section class="modal-card" style="max-width:400px">
         <div class="modal-header">
           <div>
-            <span class="eyebrow">${escapeHtml(project.name)}</span>
+            <span class="eyebrow">Nova role</span>
             <h2>Adicionar Role</h2>
           </div>
           <button class="icon-button light" type="button" data-modal-close aria-label="Fechar">×</button>
         </div>
         <form id="projectRoleForm" class="modal-body" autocomplete="off">
-          <input type="hidden" name="projectId" value="${escapeAttr(projectId)}">
           <div class="form-field">
-            <label class="form-field-label" for="roleNumber">Numero da Role</label>
-            <input id="roleNumber" class="form-input" type="text" name="roleNumber" placeholder="Ex: 12345678" required autofocus>
+            <label class="form-field-label" for="projectRoleProjectId">Projeto</label>
+            <select id="projectRoleProjectId" class="form-input" name="projectId" required autofocus>
+              ${state.data.projects.map((p) => `
+                <option value="${escapeAttr(p.id)}">${escapeHtml(p.name)}</option>
+              `).join("")}
+            </select>
           </div>
+          ${availableDemandRoles.length ? `
+            <div class="form-field">
+              <label class="form-field-label" for="roleNumber">Numero da Role</label>
+              <select id="roleNumber" class="form-input" name="roleNumber" required>
+                ${availableDemandRoles.map((dr) => `
+                  <option value="${escapeAttr(dr.roleIdExternal)}">${escapeHtml(`${dr.roleIdExternal} — ${dr.roleTitle || "Sem titulo"} (${dr.client || "Sem cliente"})`)}</option>
+                `).join("")}
+              </select>
+            </div>
+          ` : `
+            <p class="muted-text">Nenhuma role disponivel para cadastro. Importe o relatorio de Demanda (Roles) na tela de Importacao primeiro.</p>
+          `}
           <div class="modal-footer">
             <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-            <button class="primary-button" type="submit">Salvar</button>
+            ${availableDemandRoles.length ? `<button class="primary-button" type="submit">Salvar</button>` : ""}
           </div>
         </form>
       </section>
     `);
 
+    if (!availableDemandRoles.length) return;
+
     document.getElementById("projectRoleForm").addEventListener("submit", async (e) => {
       e.preventDefault();
       const formData = new FormData(e.target);
+      const projectId = String(formData.get("projectId") || "").trim();
       const roleNumber = String(formData.get("roleNumber") || "").trim();
-      if (!roleNumber) return;
+      if (!roleNumber || !projectId) return;
       const projectRole = { id: createId(), projectId, roleNumber };
       try {
         if (window.staffingDatabase) {
@@ -5323,6 +5411,40 @@
       medium: "Media",
       low: "Baixa"
     }[severity] || "Alerta";
+  }
+
+  function demandRoleInfoHtml(dr) {
+    if (!dr) return "";
+
+    const parts = [];
+
+    if (dr.roleStatus) {
+      const normalized = String(dr.roleStatus).toLowerCase().replaceAll("_", "-").replace(/[^a-z0-9-]/g, "");
+      const isCancelled = /cancel/i.test(dr.roleStatus);
+      const titleAttr = isCancelled && dr.cancellationReason ? ` title="${escapeAttr(dr.cancellationReason)}"` : "";
+      parts.push(`<span class="status-pill ${normalized}"${titleAttr}>${escapeHtml(dr.roleStatus)}</span>`);
+    }
+
+    const funnel = [
+      [dr.candidatesIdentified, "identificado(s)"],
+      [dr.candidatesIdentifiedSelf, "identificado(s) (auto)"],
+      [dr.candidatesProposed, "proposto(s)"],
+      [dr.candidatesConfirming, "confirmando"],
+      [dr.candidatesFilled, "preenchido(s)"],
+      [dr.candidatesNotSelected, "nao selecionado(s)"]
+    ]
+      .map(([value, label]) => {
+        const n = parseInt(value, 10);
+        return Number.isFinite(n) && n > 0 ? `${n} ${label}` : null;
+      })
+      .filter(Boolean)
+      .join(" · ");
+    if (funnel) parts.push(`<div class="muted-text" style="font-size:12px">${escapeHtml(funnel)}</div>`);
+
+    const candidateName = dr.joinerName || dr.contractorName;
+    if (candidateName) parts.push(`<div class="muted-text" style="font-size:12px">Candidato: ${escapeHtml(candidateName)}</div>`);
+
+    return parts.length ? `<div style="margin-top:4px">${parts.join("")}</div>` : "";
   }
 
   function statusPill(status, customLabel) {
