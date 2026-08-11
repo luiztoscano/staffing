@@ -263,6 +263,11 @@ button {
   font-size: 13px;
 }
 
+.btn-icon {
+  width: 36px;
+  padding: 0;
+}
+
 .content {
   display: grid;
   gap: 20px;
@@ -1773,6 +1778,115 @@ tbody tr:hover td {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.input-with-action {
+  display: flex;
+  gap: 8px;
+  align-items: stretch;
+}
+
+.input-with-action .form-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Demand role rich card — used in form preview and search results */
+.demand-role-card {
+  display: grid;
+  gap: 8px;
+  margin-top: 8px;
+  padding: 12px 14px;
+  background: color-mix(in srgb, var(--accent) 5%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--accent) 18%, var(--line));
+  border-radius: 10px;
+}
+
+.demand-role-result-card {
+  gap: 10px;
+}
+
+.demand-role-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.demand-role-card-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+
+.demand-role-card-identity strong {
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.demand-role-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.demand-role-meta {
+  font-size: 12px;
+  color: var(--muted);
+  line-height: 1.4;
+}
+
+.demand-role-pipeline {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.pipeline-chip {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.pipeline-chip--identified {
+  background: #fff0d4;
+  color: #8a5200;
+}
+
+.pipeline-chip--proposed {
+  background: #e7ebff;
+  color: var(--blue);
+}
+
+.pipeline-chip--confirming {
+  background: #ead8ff;
+  color: #5a0099;
+}
+
+.pipeline-chip--filled {
+  background: #e8f5e9;
+  color: #1b5e20;
+}
+
+.demand-role-assignee {
+  font-size: 12px;
+  color: var(--muted);
+  font-style: italic;
+}
+
+.role-manual-note {
+  margin: 8px 0 0;
+  padding: 8px 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--muted);
 }
 
 .form-field-label {

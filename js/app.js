@@ -481,6 +481,12 @@
       button.addEventListener("click", () => openProjectRoleForm());
     });
 
+    document.querySelectorAll("[data-project-role-search]").forEach((button) => {
+      button.addEventListener("click", openDemandRoleSearchModal.bind(null, (demandRole) => {
+        openProjectRoleForm({ prefillRole: demandRole });
+      }));
+    });
+
     document.querySelectorAll("[data-project-role-delete]").forEach((button) => {
       button.addEventListener("click", async () => {
         if (!window.confirm("Excluir esta role do projeto?")) return;
@@ -635,12 +641,9 @@
         <div class="panel-header">
           <div></div>
           <div class="toolbar">
-            <button class="primary-button compact" type="button" data-project-new>+ Novo projeto</button>
-            <label class="file-button compact">
-              Importar Excel
-              <input type="file" accept=".xlsx,.xls" data-project-import>
-            </label>
-            <button class="ghost-button compact" type="button" data-project-export>Exportar Excel</button>
+            <button class="ghost-button compact btn-icon" type="button" data-project-export title="Exportar Excel" aria-label="Exportar Excel">${iconExport()}</button>
+            <label class="file-button compact btn-icon" title="Importar Excel" aria-label="Importar Excel">${iconImport()}<input type="file" accept=".xlsx,.xls" data-project-import></label>
+            <button class="primary-button compact" type="button" data-project-new>Novo</button>
           </div>
         </div>
         <div class="card-grid">
@@ -793,16 +796,13 @@
                 <option value="${project.id}"${state.selectedProjectId === project.id ? " selected" : ""}>${escapeHtml(project.name)}</option>
               `).join("")}
             </select>
-            <button class="ghost-button compact" type="button" data-position-export>Exportar Excel</button>
-            <label class="file-button compact">
-              Importar Excel
-              <input type="file" accept=".xlsx,.xls" data-position-import>
-            </label>
+            <button class="ghost-button compact btn-icon" type="button" data-position-export title="Exportar Excel" aria-label="Exportar Excel">${iconExport()}</button>
+            <label class="file-button compact btn-icon" title="Importar Excel" aria-label="Importar Excel">${iconImport()}<input type="file" accept=".xlsx,.xls" data-position-import></label>
             ${selCount ? `
               <span class="selection-badge">${selCount} selecionada(s)</span>
               <button class="ghost-button compact" type="button" data-position-bulk-copy>Copiar</button>
             ` : ""}
-            <button class="primary-button compact" type="button" data-position-new>Nova posicao</button>
+            <button class="primary-button compact" type="button" data-position-new>Novo</button>
           </div>
         </div>
         ${positionsTable(positions)}
@@ -829,12 +829,10 @@
                 <option value="${escapeAttr(p.id)}"${state.selectedProjectId === p.id ? " selected" : ""}>${escapeHtml(p.name)}</option>
               `).join("")}
             </select>
-            <button class="ghost-button compact" type="button" data-project-role-export>Exportar Excel</button>
-            <label class="file-button compact">
-              Importar Excel
-              <input type="file" accept=".xlsx,.xls" data-project-role-import>
-            </label>
-            <button class="primary-button compact" type="button" data-project-role-new>+ Adicionar role</button>
+            <button class="ghost-button compact btn-icon" type="button" data-project-role-export title="Exportar Excel" aria-label="Exportar Excel">${iconExport()}</button>
+            <label class="file-button compact btn-icon" title="Importar Excel" aria-label="Importar Excel">${iconImport()}<input type="file" accept=".xlsx,.xls" data-project-role-import></label>
+            <button class="ghost-button compact" type="button" data-project-role-search>Procurar role</button>
+            <button class="primary-button compact" type="button" data-project-role-new>Novo</button>
           </div>
         </div>
         ${rolesTable(rows, { showProjectColumn: true })}
@@ -860,13 +858,10 @@
             <h2>Pessoas, custos e disponibilidade</h2>
           </div>
           <div class="toolbar">
-            <button class="ghost-button compact" type="button" data-candidate-export>Exportar Excel</button>
-            <label class="file-button compact">
-              Importar Excel
-              <input type="file" accept=".xlsx,.xls" data-candidate-import>
-            </label>
+            <button class="ghost-button compact btn-icon" type="button" data-candidate-export title="Exportar Excel" aria-label="Exportar Excel">${iconExport()}</button>
+            <label class="file-button compact btn-icon" title="Importar Excel" aria-label="Importar Excel">${iconImport()}<input type="file" accept=".xlsx,.xls" data-candidate-import></label>
             <button class="ghost-button compact" type="button" data-candidate-search>Procurar candidato</button>
-            <button class="primary-button compact" type="button" data-candidate-new>Novo candidato</button>
+            <button class="primary-button compact" type="button" data-candidate-new>Novo</button>
           </div>
         </div>
         ${candidatesTable(candidates)}
@@ -1555,7 +1550,7 @@
               <button type="button" data-pipeline-view="kanban" aria-pressed="${state.pipelineView === "kanban"}">Quadro</button>
               <button type="button" data-pipeline-view="list" aria-pressed="${state.pipelineView === "list"}">Lista</button>
             </div>
-            <button class="primary-button compact" type="button" data-application-new>Nova candidatura</button>
+            <button class="primary-button compact" type="button" data-application-new>Novo</button>
           </div>
         </div>
         ${state.pipelineView === "kanban" ? renderPipelineKanban(applications) : renderPipelineList(applications)}
@@ -1840,12 +1835,9 @@
             <h2>Catalogo normalizado</h2>
           </div>
           <div class="toolbar">
-            <button class="ghost-button compact" type="button" data-skill-export>Exportar Excel</button>
-            <label class="file-button compact">
-              Importar Excel
-              <input type="file" accept=".xlsx,.xls" data-skill-import>
-            </label>
-            <button class="primary-button compact" type="button" data-skill-new>Nova skill</button>
+            <button class="ghost-button compact btn-icon" type="button" data-skill-export title="Exportar Excel" aria-label="Exportar Excel">${iconExport()}</button>
+            <label class="file-button compact btn-icon" title="Importar Excel" aria-label="Importar Excel">${iconImport()}<input type="file" accept=".xlsx,.xls" data-skill-import></label>
+            <button class="primary-button compact" type="button" data-skill-new>Novo</button>
           </div>
         </div>
         ${skills.length ? `
@@ -1889,7 +1881,7 @@
             <span class="eyebrow">Empresas</span>
             <h2>Empregadores e fornecedores</h2>
           </div>
-          <button class="primary-button compact" type="button" data-company-new>Nova empresa</button>
+          <button class="primary-button compact" type="button" data-company-new>Novo</button>
         </div>
         <div class="skill-cloud">
           ${companies.map((company) => {
@@ -2005,7 +1997,8 @@
               <th>Projeto</th>
               <th>Role</th>
               <th>Status</th>
-              <th>Periodo</th>
+              <th>Inicio</th>
+              <th>Fim</th>
               <th>Candidatos</th>
               <th>Acoes</th>
             </tr>
@@ -2025,12 +2018,13 @@
                   <td>${escapeHtml(project ? project.name : "")}</td>
                   <td>${roleLabel}</td>
                   <td>${statusPill(position.status)}</td>
-                  <td>${formatDate(position.startDate)} – ${formatDate(position.endDate)}</td>
+                  <td>${position.startDate ? formatDate(position.startDate) : `<span class="muted">—</span>`}</td>
+                  <td>${position.endDate ? formatDate(position.endDate) : `<span class="muted">—</span>`}</td>
                   <td>${apps.length}</td>
                   <td><button class="ghost-button compact" type="button" data-position-edit="${escapeAttr(position.id)}">Editar</button></td>
                 </tr>
               `;
-            }).join("") || tableEmpty(8, "Nenhuma posicao encontrada.")}
+            }).join("") || tableEmpty(9, "Nenhuma posicao encontrada.")}
           </tbody>
         </table>
       </div>
@@ -2552,7 +2546,7 @@
 
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-          <button class="primary-button" type="submit">Salvar projeto</button>
+          <button class="primary-button" type="submit">Salvar</button>
         </div>
       </form>
     `);
@@ -3754,7 +3748,7 @@
 
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-          <button class="primary-button" type="submit">Salvar skill</button>
+          <button class="primary-button" type="submit">Salvar</button>
         </div>
       </form>
     `);
@@ -3850,7 +3844,7 @@
 
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-          <button class="primary-button" type="submit">Salvar empresa</button>
+          <button class="primary-button" type="submit">Salvar</button>
         </div>
       </form>
     `);
@@ -4046,7 +4040,7 @@
 
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-          <button class="primary-button" type="submit">Salvar candidato</button>
+          <button class="primary-button" type="submit">Salvar</button>
         </div>
       </form>
     `);
@@ -4276,17 +4270,18 @@
     }
   }
 
-  function openProjectRoleForm() {
+  function openProjectRoleForm(prefill = {}) {
     if (!state.data.projects.length) {
       toast("Cadastre um projeto antes de adicionar roles.");
       return;
     }
 
-    const usedRoleNumbers = new Set((state.data.projectRoles || []).map((r) => r.roleNumber));
-    const availableDemandRoles = (state.data.demandRoles || []).filter((dr) => !usedRoleNumbers.has(dr.roleIdExternal));
+    const { prefillRole = null, prefillProjectId = null } = prefill;
+    const defaultProjectId = prefillProjectId
+      || (state.selectedProjectId !== "all" ? state.selectedProjectId : state.data.projects[0].id);
 
     openModal(`
-      <section class="modal-card" style="max-width:400px">
+      <section class="modal-card" style="max-width:480px">
         <div class="modal-header">
           <div>
             <span class="eyebrow">Nova role</span>
@@ -4297,33 +4292,39 @@
         <form id="projectRoleForm" class="modal-body" autocomplete="off">
           <div class="form-field">
             <label class="form-field-label" for="projectRoleProjectId">Projeto</label>
-            <select id="projectRoleProjectId" class="form-input" name="projectId" required autofocus>
+            <select id="projectRoleProjectId" class="form-input" name="projectId" required>
               ${state.data.projects.map((p) => `
-                <option value="${escapeAttr(p.id)}">${escapeHtml(p.name)}</option>
+                <option value="${escapeAttr(p.id)}" ${p.id === defaultProjectId ? "selected" : ""}>${escapeHtml(p.name)}</option>
               `).join("")}
             </select>
           </div>
-          ${availableDemandRoles.length ? `
-            <div class="form-field">
-              <label class="form-field-label" for="roleNumber">Numero da Role</label>
-              <select id="roleNumber" class="form-input" name="roleNumber" required>
-                ${availableDemandRoles.map((dr) => `
-                  <option value="${escapeAttr(dr.roleIdExternal)}">${escapeHtml(`${dr.roleIdExternal} — ${dr.roleTitle || "Sem titulo"} (${dr.client || "Sem cliente"})`)}</option>
-                `).join("")}
-              </select>
-            </div>
-          ` : `
-            <p class="muted-text">Nenhuma role disponivel para cadastro. Importe o relatorio de Demanda (Roles) na tela de Importacao primeiro.</p>
-          `}
+          <div class="form-field">
+            <label class="form-field-label" for="roleNumber">Numero da Role</label>
+            <input id="roleNumber" class="form-input" name="roleNumber"
+              value="${escapeAttr(prefillRole ? prefillRole.roleIdExternal : "")}"
+              placeholder="Ex: 123456" required autocomplete="off" autofocus>
+            <div id="rolePreview">${prefillRole ? demandRolePreviewHtml(prefillRole) : ""}</div>
+          </div>
           <div class="modal-footer">
             <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-            ${availableDemandRoles.length ? `<button class="primary-button" type="submit">Salvar</button>` : ""}
+            <button class="primary-button" type="submit">Salvar</button>
           </div>
         </form>
       </section>
     `);
 
-    if (!availableDemandRoles.length) return;
+    const roleInput = document.getElementById("roleNumber");
+    const rolePreview = document.getElementById("rolePreview");
+
+    function updateRolePreview(roleIdExternal) {
+      if (!roleIdExternal) { rolePreview.innerHTML = ""; return; }
+      const dr = (state.data.demandRoles || []).find((r) => r.roleIdExternal === roleIdExternal);
+      rolePreview.innerHTML = dr
+        ? demandRolePreviewHtml(dr)
+        : `<p class="role-manual-note">Role nao encontrada na importacao — sera cadastrada manualmente.</p>`;
+    }
+
+    roleInput.addEventListener("input", () => updateRolePreview(roleInput.value.trim()));
 
     document.getElementById("projectRoleForm").addEventListener("submit", async (e) => {
       e.preventDefault();
@@ -4349,6 +4350,142 @@
         toast(`Nao foi possivel salvar a role: ${msg}`);
         console.error(err);
       }
+    });
+  }
+
+  function demandRoleCardBody(dr) {
+    const meta = [];
+    if (dr.client) meta.push(escapeHtml(dr.client));
+    if (dr.projectName && dr.projectName !== dr.client) meta.push(escapeHtml(dr.projectName));
+    if (dr.startDate || dr.endDate) {
+      const start = dr.startDate ? formatDate(dr.startDate) : "?";
+      const end = dr.endDate ? formatDate(dr.endDate) : "?";
+      meta.push(`${start} → ${end}`);
+    }
+
+    const pipelineCounters = [
+      { label: "Identificado", value: dr.candidatesIdentified, cls: "identified" },
+      { label: "Proposto", value: dr.candidatesProposed, cls: "proposed" },
+      { label: "Confirmando", value: dr.candidatesConfirming, cls: "confirming" },
+      { label: "Preenchido", value: dr.candidatesFilled, cls: "filled" },
+    ].filter((c) => c.value && String(c.value) !== "0");
+
+    const assignee = dr.joinerName || dr.contractorName;
+
+    return `
+      <div class="demand-role-card-head">
+        <div class="demand-role-card-identity">
+          <strong>${escapeHtml(dr.roleIdExternal)}</strong>
+          ${dr.roleTitle ? `<span class="demand-role-title">${escapeHtml(dr.roleTitle)}</span>` : ""}
+        </div>
+        ${dr.roleStatus ? `<div class="demand-role-status">${statusPill(dr.roleStatus, dr.roleStatus)}</div>` : ""}
+      </div>
+      ${meta.length ? `<div class="demand-role-meta">${meta.join(" · ")}</div>` : ""}
+      ${pipelineCounters.length ? `
+        <div class="demand-role-pipeline">
+          ${pipelineCounters.map((c) => `<span class="pipeline-chip pipeline-chip--${c.cls}">${escapeHtml(String(c.value))} ${escapeHtml(c.label)}</span>`).join("")}
+        </div>
+      ` : ""}
+      ${assignee ? `<div class="demand-role-assignee">${escapeHtml(assignee)}</div>` : ""}
+    `;
+  }
+
+  function demandRolePreviewHtml(dr) {
+    return `<div class="demand-role-card">${demandRoleCardBody(dr)}</div>`;
+  }
+
+  function openDemandRoleSearchModal(onSelect) {
+    openModal(`
+      <section class="modal-card wide-modal" id="demandRoleSearchModal">
+        <div class="modal-header">
+          <div>
+            <span class="eyebrow">Roles de Demanda</span>
+            <h2>Procurar role</h2>
+          </div>
+          <button class="icon-button light" type="button" data-modal-close aria-label="Fechar">×</button>
+        </div>
+        <div class="candidate-search-layout">
+          <aside class="candidate-search-filters">
+            <div class="search-section">
+              <p class="search-section-label">Identificacao</p>
+              <input class="filter-input" name="roleId" placeholder="Numero da role" autocomplete="off" aria-label="Numero da role">
+              <input class="filter-input" name="roleTitle" placeholder="Titulo" autocomplete="off" aria-label="Titulo">
+              <input class="filter-input" name="roleClient" placeholder="Cliente" autocomplete="off" aria-label="Cliente">
+              <input class="filter-input" name="roleStatus" placeholder="Status" autocomplete="off" aria-label="Status">
+            </div>
+            <div class="modal-actions search-actions">
+              <button class="ghost-button" type="button" data-role-search-clear>Limpar</button>
+              <button class="primary-button" type="button" data-role-search-run>Pesquisar</button>
+            </div>
+          </aside>
+          <div class="candidate-search-results-panel">
+            <div class="search-results" data-role-search-results>
+              ${emptyState("Informe o numero, titulo ou cliente para procurar roles.")}
+            </div>
+          </div>
+        </div>
+      </section>
+    `);
+
+    const modal = document.querySelector("#demandRoleSearchModal");
+
+    function renderDemandRoleResults() {
+      const roleId = cleanCell(modal.querySelector("[name='roleId']").value).toLowerCase();
+      const roleTitle = cleanCell(modal.querySelector("[name='roleTitle']").value).toLowerCase();
+      const roleClient = cleanCell(modal.querySelector("[name='roleClient']").value).toLowerCase();
+      const roleStatus = cleanCell(modal.querySelector("[name='roleStatus']").value).toLowerCase();
+      const container = modal.querySelector("[data-role-search-results]");
+
+      if (!roleId && !roleTitle && !roleClient && !roleStatus) {
+        container.innerHTML = emptyState("Informe o numero, titulo ou cliente para procurar roles.");
+        return;
+      }
+
+      const usedRoleNumbers = new Set((state.data.projectRoles || []).map((r) => r.roleNumber));
+
+      const matches = (state.data.demandRoles || []).filter((dr) => {
+        const matchesId = !roleId || dr.roleIdExternal.toLowerCase().includes(roleId);
+        const matchesTitle = !roleTitle || (dr.roleTitle || "").toLowerCase().includes(roleTitle);
+        const matchesClient = !roleClient || (dr.client || "").toLowerCase().includes(roleClient);
+        const matchesStatus = !roleStatus || (dr.roleStatus || "").toLowerCase().includes(roleStatus);
+        return matchesId && matchesTitle && matchesClient && matchesStatus;
+      }).slice(0, 50);
+
+      container.innerHTML = matches.length
+        ? matches.map((dr) => {
+            const alreadyAdded = usedRoleNumbers.has(dr.roleIdExternal);
+            return `
+              <article class="record-card demand-role-result-card">
+                ${demandRoleCardBody(dr)}
+                <div class="record-actions">
+                  <button class="primary-button compact" type="button" data-select-demand-role="${escapeAttr(dr.id)}" ${alreadyAdded ? "disabled" : ""}>
+                    ${alreadyAdded ? "Ja adicionada" : "Selecionar"}
+                  </button>
+                </div>
+              </article>
+            `;
+          }).join("")
+        : emptyState("Nenhuma role encontrada para esses filtros.");
+    }
+
+    modal.querySelector("[data-role-search-run]").addEventListener("click", renderDemandRoleResults);
+    modal.querySelector("[data-role-search-clear]").addEventListener("click", () => {
+      modal.querySelectorAll("input").forEach((input) => { input.value = ""; });
+      modal.querySelector("[data-role-search-results]").innerHTML = emptyState("Informe o numero, titulo ou cliente para procurar roles.");
+    });
+    modal.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" && event.target.matches("input")) {
+        event.preventDefault();
+        renderDemandRoleResults();
+      }
+    });
+    modal.addEventListener("click", (event) => {
+      const button = event.target.closest("[data-select-demand-role]");
+      if (!button) return;
+      const dr = byId("demandRoles", button.dataset.selectDemandRole);
+      if (!dr) return;
+      closeModal();
+      onSelect(dr);
     });
   }
 
@@ -4427,12 +4564,12 @@
               </label>
 
               <label>
-                <span>Data de inicio</span>
+                <span>Inicio</span>
                 <input name="startDate" type="date" value="${escapeAttr(values.startDate)}" required>
               </label>
 
               <label>
-                <span>Data fim</span>
+                <span>Fim</span>
                 <input name="endDate" type="date" value="${escapeAttr(values.endDate)}" required>
               </label>
             </div>
@@ -4478,7 +4615,7 @@
 
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-          <button class="primary-button" type="submit">Salvar posicao</button>
+          <button class="primary-button" type="submit">Salvar</button>
         </div>
       </form>
     `);
@@ -4758,7 +4895,7 @@
 
         <div class="modal-actions">
           <button class="ghost-button" type="button" data-modal-close>Cancelar</button>
-          <button class="primary-button" type="submit">Salvar candidatura</button>
+          <button class="primary-button" type="submit">Salvar</button>
         </div>
       </form>
     `);
@@ -5456,6 +5593,14 @@
   function statusPill(status, customLabel) {
     const normalized = String(status).toLowerCase().replaceAll("_", "-");
     return `<span class="status-pill ${normalized}">${customLabel || labels[status] || status}</span>`;
+  }
+
+  function iconExport() {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 2v8M5 7l3 3 3-3M2.5 13h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+  }
+
+  function iconImport() {
+    return `<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M8 10.5V2.5M5 5.5l3-3 3 3M2.5 13h11" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
   }
 
   function skillBadges(skillIds, skillLevels = {}) {
