@@ -1648,13 +1648,6 @@
     const alerts = filteredEvents.filter((event) => event.type === "alert").length;
 
     return `
-      <section class="metric-grid">
-        ${metricCard("Eventos filtrados", filteredEvents.length, `Em ${monthTitle(state.calendarMonth)}`)}
-        ${metricCard("Proximos", upcoming, "A partir de hoje")}
-        ${metricCard("Alertas datados", alerts, "Riscos vinculados a datas")}
-        ${metricCard("Projetos", uniqueCount(filteredEvents.map((event) => event.projectId).filter(Boolean)), "Com eventos no calendario")}
-      </section>
-
       <section class="panel">
         <div class="panel-header toolbar-header">
           <div>
