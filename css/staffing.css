@@ -848,6 +848,12 @@ tbody tr:hover td {
   max-width: min(220px, 100%);
 }
 
+.skill-badge--match {
+  background: color-mix(in srgb, var(--accent) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--line));
+  color: var(--accent);
+}
+
 .skill-legend {
   display: flex;
   flex-wrap: wrap;
@@ -2188,6 +2194,30 @@ tbody tr:hover td {
 .search-results {
   display: grid;
   gap: 12px;
+}
+
+.search-loading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 24px 0;
+  color: var(--muted);
+  font-size: 14px;
+}
+
+.search-loading-spinner {
+  display: inline-block;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  flex-shrink: 0;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
 }
 
 .candidate-search-card {

@@ -1224,18 +1224,14 @@
       return;
     }
 
-    const skill = state.data.skills.find((item) => item.name.toLowerCase() === skillName.toLowerCase())
-      || state.data.skills.find((item) => item.name.toLowerCase().includes(skillName.toLowerCase()));
-
-    if (!skill) {
-      toast("Skill nao encontrada no catalogo.");
-      return;
-    }
+    const skill = state.data.skills.find((item) => item.name.toLowerCase() === skillName.toLowerCase());
 
     const filters = selectedCandidateSkillFilters(modal);
     const levelLabel = cleanCell(levelSelect.value);
-    const exists = filters.some((filter) => filter.id === skill.id && filter.levelLabel === levelLabel);
-    if (!exists) filters.push({ id: skill.id, name: skill.name, levelLabel });
+    const term = skill ? skill.name : skillName;
+    const filterId = skill ? skill.id : null;
+    const exists = filters.some((filter) => filter.name.toLowerCase() === term.toLowerCase() && filter.levelLabel === levelLabel);
+    if (!exists) filters.push({ id: filterId, name: term, levelLabel });
 
     modal.dataset.skillFilters = JSON.stringify(filters);
     lookup.value = "";
@@ -1273,11 +1269,14 @@
 
   function renderCandidateSearchResults(modal) {
     const resultsContainer = modal.querySelector("[data-candidate-search-results]");
-    const matches = filterImportedPeopleForCandidateSearch(modal).slice(0, 30);
-
-    resultsContainer.innerHTML = matches.length
-      ? matches.map((person) => importedCandidateSearchCard(person)).join("")
-      : emptyState("Nenhuma pessoa importada encontrada para esses filtros.");
+    resultsContainer.innerHTML = `<div class="search-loading"><span class="search-loading-spinner"></span>Buscando...</div>`;
+    setTimeout(() => {
+      const activeFilters = selectedCandidateSkillFilters(modal);
+      const matches = filterImportedPeopleForCandidateSearch(modal);
+      resultsContainer.innerHTML = matches.length
+        ? matches.map((person) => importedCandidateSearchCard(person, activeFilters)).join("")
+        : emptyState("Nenhuma pessoa importada encontrada para esses filtros.");
+    }, 0);
   }
 
   function filterImportedPeopleForCandidateSearch(modal) {
@@ -1289,7 +1288,7 @@
     const clMax = parseInt(modal.querySelector("[name='clRangeMax']")?.value || "12", 10);
     const filteringCl = clMin > 1 || clMax < 12;
 
-    if (!name && !eid && !location && !selectedSkills.length && !filteringCl) return [];
+    if (!name && !eid && !location && !selectedSkills.length) return [];
 
     return (state.data.importedPeople || []).filter((person) => {
       const displayName = displayNameFromImportedPerson(person.name).toLowerCase();
@@ -1313,20 +1312,33 @@
       })();
 
       return matchesName && matchesEid && matchesLocation && matchesSkills && matchesCl;
-    });
+    })
+    .map((person) => ({ person, availableFrom: personAvailabilityLabel(calendarsForPerson(person)).availableFrom }))
+    .sort((a, b) => a.availableFrom.localeCompare(b.availableFrom))
+    .map(({ person }) => person);
+  }
+
+  function skillLevelAtLeast(personLevelLabel, filterLevelLabel) {
+    if (!filterLevelLabel) return true;
+    const filterCode = filterLevelLabel.split("-")[0].trim();
+    const personCode = personLevelLabel.split("-")[0].trim();
+    const fm = filterCode.match(/^([A-Za-z]+)(\d+)$/);
+    const pm = personCode.match(/^([A-Za-z]+)(\d+)$/);
+    if (!fm || !pm) return personLevelLabel === filterLevelLabel;
+    if (fm[1].toUpperCase() !== pm[1].toUpperCase()) return false;
+    return parseInt(pm[2], 10) >= parseInt(fm[2], 10);
   }
 
   function personHasImportedSkill(personSkills, selectedSkill) {
-    const skill = byId("skills", selectedSkill.id);
-    if (!skill) return false;
+    const term = selectedSkill.name.toLowerCase();
     return personSkills.some((personSkill) => {
-      const sameName = personSkill.name.toLowerCase() === skill.name.toLowerCase();
-      const sameLevel = !selectedSkill.levelLabel || personSkill.levelLabel === selectedSkill.levelLabel;
-      return sameName && sameLevel;
+      const nameMatches = personSkill.name.toLowerCase().includes(term);
+      const levelMatches = !selectedSkill.levelLabel || skillLevelAtLeast(personSkill.levelLabel, selectedSkill.levelLabel);
+      return nameMatches && levelMatches;
     });
   }
 
-  function importedCandidateSearchCard(person) {
+  function importedCandidateSearchCard(person, activeFilters) {
     const calendars = calendarsForPerson(person)
       .sort((a, b) => cleanCell(a.calendarStartDate).localeCompare(cleanCell(b.calendarStartDate)));
     const alreadyCandidate = isImportedPersonAlreadyCandidate(person);
@@ -1362,7 +1374,7 @@
               <small>${skills.length ? `${skills.length} registrada(s)` : "Sem skills"}</small>
             </summary>
             <div class="skill-scroll">
-              <div class="skill-row">${importedSkillBadges(person.skillsText)}</div>
+              <div class="skill-row">${importedSkillBadges(person.skillsText, activeFilters)}</div>
             </div>
             ${importedSkillsLegend(person.skillsText)}
           </details>
@@ -1558,11 +1570,16 @@
     });
   }
 
-  function importedSkillBadges(text) {
+  function importedSkillBadges(text, activeFilters) {
     const items = parseImportedSkills(text);
     return items.map((item) => {
       const label = item.levelCode ? `${item.name} (${item.levelCode})` : item.name;
-      return `<span class="skill-badge">${escapeHtml(label)}</span>`;
+      const matched = activeFilters && activeFilters.length && activeFilters.some((filter) => {
+        const nameMatches = item.name.toLowerCase().includes(filter.name.toLowerCase());
+        const levelMatches = !filter.levelLabel || skillLevelAtLeast(item.levelLabel, filter.levelLabel);
+        return nameMatches && levelMatches;
+      });
+      return `<span class="skill-badge${matched ? " skill-badge--match" : ""}">${escapeHtml(label)}</span>`;
     }).join("") || "<span class=\"muted\">Sem skills importadas</span>";
   }
 
@@ -5574,9 +5591,9 @@
       if (!c.calendarEndDate || c.calendarEndDate < today) return false;
       return calendarTypeClass(c.calendarType) === "booked";
     });
-    if (!booked.length) return { label: "Livre", available: true };
+    if (!booked.length) return { label: "Livre", available: true, availableFrom: today };
     const lastEnd = booked.reduce((max, c) => c.calendarEndDate > max ? c.calendarEndDate : max, booked[0].calendarEndDate);
-    return { label: `Apos ${formatDate(lastEnd)}`, available: false };
+    return { label: `Apos ${formatDate(lastEnd)}`, available: false, availableFrom: lastEnd };
   }
 
   function candidateStaffability(candidate) {
