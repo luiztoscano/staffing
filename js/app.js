@@ -1600,16 +1600,24 @@
 
   function renderPipeline() {
     const applications = filterApplications();
-    const positionCount = state.data.positions.filter((p) =>
+    const filteredPositions = state.data.positions.filter((p) =>
       state.selectedProjectId === "all" || p.projectId === state.selectedProjectId
-    ).length;
+    );
+    const positionCount = filteredPositions.length;
+    const positionsWithCandidates = new Set(state.data.applications.map((a) => a.positionId));
+    const withCount = filteredPositions.filter((p) => positionsWithCandidates.has(p.id)).length;
+    const withoutCount = positionCount - withCount;
     const positionLabel = positionCount === 1 ? "1 posicao" : `${positionCount} posicoes`;
     return `
       <section class="panel">
         <div class="panel-header toolbar-header">
           <div>
             <h2>Pipeline</h2>
-            <span class="panel-subtitle">${positionLabel}</span>
+            <span class="panel-subtitle">
+              ${positionLabel}
+              <span class="pipeline-stat pipeline-stat--with" title="Vagas com candidatos">${withCount} com candidatos</span>
+              <span class="pipeline-stat pipeline-stat--without" title="Vagas sem candidatos">${withoutCount} sem candidatos</span>
+            </span>
           </div>
           <div class="toolbar">
             <select data-project-filter aria-label="Filtrar pipeline por projeto">
