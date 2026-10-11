@@ -8,6 +8,7 @@
     calendarView: "month",
     calendarSelectedDate: null,
     pipelineView: "kanban",
+    hideRejectedCancelled: true,
     showInactiveRoles: false,
     selectedPositionIds: new Set(),
     data: structuredClone(window.staffingSeed),
@@ -500,6 +501,13 @@
       button.addEventListener("click", () => {
         const role = byId("projectRoles", button.dataset.projectRoleEdit);
         if (role) openProjectRoleForm({ existingRole: role });
+      });
+    });
+
+    document.querySelectorAll("[data-hide-rejected-cancelled]").forEach((cb) => {
+      cb.addEventListener("change", () => {
+        state.hideRejectedCancelled = cb.checked;
+        render();
       });
     });
 
@@ -1184,6 +1192,22 @@
         return;
       }
 
+      const copyButton = event.target.closest("[data-copy-person-row]");
+      if (copyButton) {
+        const person = byId("importedPeople", copyButton.dataset.copyPersonRow);
+        if (person) {
+          const row = [
+            person.deployedToEntity || "",
+            displayNameFromImportedPerson(person.name),
+            person.email || "",
+            formatCareerLevel(person.resourceLevel) || person.resourceLevel || "",
+            person.metroCity || person.country || ""
+          ].join("\t");
+          navigator.clipboard.writeText(row).then(() => toast("Linha copiada para a area de transferencia."));
+        }
+        return;
+      }
+
       const button = event.target.closest("[data-add-imported-candidate]");
       if (!button) return;
       const person = byId("importedPeople", button.dataset.addImportedCandidate);
@@ -1359,7 +1383,14 @@
           </div>
           <div class="candidate-head-right">
             ${alreadyCandidate ? statusPill("ACTIVE", "Ja candidato") : ""}
-            ${person.cvLink ? `<a class="cv-top-link" href="${escapeAttr(person.cvLink)}" target="_blank" rel="noreferrer">Link para o CV</a>` : ""}
+            <div class="candidate-cv-row">
+              ${person.cvLink ? `<a class="cv-top-link" href="${escapeAttr(person.cvLink)}" target="_blank" rel="noreferrer">Link para o CV</a>` : ""}
+              <button class="icon-button light" type="button" data-copy-person-row="${escapeAttr(person.id)}" title="Copiar linha para Excel">
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                  <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+                </svg>
+              </button>
+            </div>
           </div>
         </div>
         <div class="candidate-info-list">
@@ -1620,6 +1651,10 @@
             </span>
           </div>
           <div class="toolbar">
+            <label class="toolbar-checkbox">
+              <input type="checkbox" data-hide-rejected-cancelled ${state.hideRejectedCancelled ? "checked" : ""}>
+              Ocultar rejeitados e cancelados
+            </label>
             <select data-project-filter aria-label="Filtrar pipeline por projeto">
               <option value="all"${state.selectedProjectId === "all" ? " selected" : ""}>Todos os projetos</option>
               ${state.data.projects.map((project) => `
@@ -2198,7 +2233,8 @@
         .join(" ")
         .toLowerCase()
         .includes(state.search);
-      return matchesProject && matchesSearch;
+      const matchesRejected = !state.hideRejectedCancelled || (app.status !== "REJECTED" && app.status !== "CANCELLED");
+      return matchesProject && matchesSearch && matchesRejected;
     });
   }
 

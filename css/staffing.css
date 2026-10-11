@@ -386,6 +386,17 @@ button {
   gap: 10px;
 }
 
+.toolbar-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  white-space: nowrap;
+  user-select: none;
+}
+
 .segmented-control {
   display: inline-flex;
   min-height: 36px;
@@ -2267,6 +2278,12 @@ tbody tr:hover td {
   align-items: flex-end;
   gap: 6px;
   flex-shrink: 0;
+}
+
+.candidate-cv-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
 }
 
 .cv-top-link {
